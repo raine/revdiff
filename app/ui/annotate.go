@@ -159,23 +159,89 @@ func (m Model) annotationAtCursor(preferred *annotation.Annotation) (annotation.
 	return annotation.Annotation{}, false
 }
 
+// annotationInputLineIndex returns the DiffLine that owns the live input row.
+// Range input follows the lower selection endpoint while the cursor remains at
+// the moving endpoint, preserving selection direction and editor target state.
+func (m Model) annotationInputLineIndex() int {
+	if r, ok := m.selectedRange(); ok {
+		return r.end - 1
+	}
+	return m.nav.diffCursor
+}
+
+// suppressesAnnotationAt reports whether a saved annotation row is replaced by
+// the live input. Scoped targets are stored on their first source row, which can
+// differ from the lower selected row where their input is painted.
+func (m Model) suppressesAnnotationAt(idx int) bool {
+	if !m.annot.annotating || m.annot.fileAnnotating || idx < 0 || idx >= len(m.file.lines) {
+		return false
+	}
+	if idx == m.annotationInputLineIndex() {
+		return true
+	}
+	if m.annot.target == nil || m.annot.target.Scope == annotation.ScopeLine {
+		return false
+	}
+	dl := m.file.lines[idx]
+	return m.annot.target.Line == m.diffLineNum(dl) && m.annot.target.Type == string(dl.ChangeType)
+}
+
+// annotationInputViewportY returns the visual row occupied by the live input.
+func (m Model) annotationInputViewportY() (int, bool) {
+	idx := m.annotationInputLineIndex()
+	if idx < 0 || idx >= len(m.file.lines) {
+		return 0, false
+	}
+	var hunks []int
+	if m.modes.collapsed.enabled {
+		hunks = m.findHunks()
+	}
+	annotationSet := m.buildAnnotationSet()
+	y := 0
+	if m.hasFileAnnotation() {
+		y = m.wrappedAnnotationLineCount(annotKeyFile)
+	}
+	for i := 0; i < idx; i++ {
+		h := m.hunkLineHeight(i, hunks, annotationSet)
+		if h > 0 && m.suppressesAnnotationAt(i) {
+			dl := m.file.lines[i]
+			key := m.annotationKey(m.diffLineNum(dl), string(dl.ChangeType))
+			if annotationSet[key] {
+				h -= m.wrappedAnnotationLineCount(key)
+			}
+		}
+		y += h
+	}
+	return y + m.wrappedLineCount(idx), true
+}
+
 // ensureLineAnnotationInputVisible scrolls the viewport so the line-annotation
-// input row is visible. the input is rendered below the diff line, so keeping
-// the cursor line visible is not always sufficient when cursor is on the last
-// visible row.
+// input and cursor marker remain visible when they fit together. The input row
+// follows the bottom selected DiffLine for a range and the cursor line otherwise.
 func (m *Model) ensureLineAnnotationInputVisible() {
 	if !m.annot.annotating || m.annot.fileAnnotating || m.layout.viewport.Height <= 0 {
 		return
 	}
-	if m.nav.diffCursor < 0 || m.nav.diffCursor >= len(m.file.lines) {
+	inputY, ok := m.annotationInputViewportY()
+	if !ok {
 		return
 	}
 
-	inputY := m.cursorViewportY() + m.wrappedLineCount(m.nav.diffCursor)
-	switch {
-	case inputY < m.layout.viewport.YOffset:
+	cursorY := m.cursorViewportY()
+	top, bottom := min(cursorY, inputY), max(cursorY, inputY)
+	m.layout.viewport.SetContent(m.renderDiff())
+	if bottom-top < m.layout.viewport.Height {
+		switch {
+		case top < m.layout.viewport.YOffset:
+			m.layout.viewport.SetYOffset(top)
+		case bottom >= m.layout.viewport.YOffset+m.layout.viewport.Height:
+			m.layout.viewport.SetYOffset(bottom - m.layout.viewport.Height + 1)
+		}
+		return
+	}
+	if inputY < m.layout.viewport.YOffset {
 		m.layout.viewport.SetYOffset(inputY)
-	case inputY >= m.layout.viewport.YOffset+m.layout.viewport.Height:
+	} else if inputY >= m.layout.viewport.YOffset+m.layout.viewport.Height {
 		m.layout.viewport.SetYOffset(inputY - m.layout.viewport.Height + 1)
 	}
 }

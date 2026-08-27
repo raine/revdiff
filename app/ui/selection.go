@@ -64,7 +64,7 @@ func (m *Model) beginSelection(idx int) bool {
 		m.output.hint = "Select an added or removed line"
 		return false
 	}
-	m.ensureHunkExpanded(idx)
+	m.ensureSelectionHunkExpanded(idx)
 	m.annot.cursorOnAnnotation = false
 	m.nav.diffCursor = idx
 	m.annot.selection = rangeSelection{active: true, anchor: idx, end: idx}
@@ -95,6 +95,21 @@ func (m *Model) extendSelectionTo(idx int) bool {
 	return true
 }
 
+// ensureSelectionHunkExpanded makes every selected underlying row visible in
+// collapsed view, including removals when selection starts from a visible add.
+func (m *Model) ensureSelectionHunkExpanded(idx int) {
+	if !m.modes.collapsed.enabled {
+		return
+	}
+	r, ok := m.hunkRangeAt(idx)
+	if ok {
+		if m.modes.collapsed.expandedHunks == nil {
+			m.modes.collapsed.expandedHunks = make(map[int]bool)
+		}
+		m.modes.collapsed.expandedHunks[r.start] = true
+	}
+}
+
 func (m Model) handleSelectRange() (tea.Model, tea.Cmd) {
 	if m.layout.focus != paneDiff {
 		return m, nil
@@ -109,7 +124,7 @@ func (m Model) handleAnnotateHunk() (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	r, _ := m.hunkRangeAt(m.nav.diffCursor)
-	m.ensureHunkExpanded(m.nav.diffCursor)
+	m.ensureSelectionHunkExpanded(m.nav.diffCursor)
 	m.annot.selection = rangeSelection{active: true, anchor: r.start, end: r.end - 1}
 	cmd := m.startScopedAnnotation(annotation.ScopeHunk, r)
 	m.layout.viewport.SetContent(m.renderDiff())

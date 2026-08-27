@@ -357,9 +357,13 @@ func (m Model) lineRenderFlags(idx int, annotationMap map[annotLineKey]string) l
 		selected:    m.selectionContains(idx),
 	}
 	// the live input row carries textinput's own state (value, cursor position), which is
-	// not reducible to a comparable key — mark it uncacheable rather than key on it.
-	if m.annot.annotating && !m.annot.fileAnnotating && idx == m.nav.diffCursor {
+	// not reducible to a comparable key. Scoped input can live below the selection
+	// rather than below the cursor, so resolve its owning line through the shared helper.
+	if m.annot.annotating && !m.annot.fileAnnotating && idx == m.annotationInputLineIndex() {
 		f.liveInput = true
+		return f
+	}
+	if m.suppressesAnnotationAt(idx) {
 		return f
 	}
 	if len(annotationMap) == 0 {
@@ -741,11 +745,14 @@ func (m Model) extendLineBg(styled string, bg style.Color) string {
 
 // renderAnnotationOrInput writes the annotation input or existing annotation below a diff line.
 func (m Model) renderAnnotationOrInput(b *strings.Builder, idx int, annotationMap map[annotLineKey]string) {
-	if m.annot.annotating && !m.annot.fileAnnotating && idx == m.nav.diffCursor {
+	if m.annot.annotating && !m.annot.fileAnnotating && idx == m.annotationInputLineIndex() {
 		line := " " + m.renderer.AnnotationInline(m.annotPrefix()) + m.annot.input.View()
 		// strip textinput's unstyled trailing padding so extendLineBg can re-pad with DiffBg
 		line = strings.TrimRight(line, " ")
 		b.WriteString(m.extendLineBg(line, m.resolver.Color(style.ColorKeyDiffPaneBg)) + "\n")
+		return
+	}
+	if m.suppressesAnnotationAt(idx) {
 		return
 	}
 	dl := m.file.lines[idx]

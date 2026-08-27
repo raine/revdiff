@@ -4,7 +4,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -70,6 +72,106 @@ func TestModelKeyboardRangeSelectionAndSave(t *testing.T) {
 	assert.True(t, strings.HasSuffix(m.store.FormatOutput(), "\n"))
 }
 
+func TestModelRangeAnnotationInputFollowsBottomSelection(t *testing.T) {
+	tests := []struct {
+		name   string
+		anchor int
+		end    int
+		mouse  bool
+	}{
+		{name: "keyboard forward", anchor: 1, end: 4},
+		{name: "keyboard reverse", anchor: 4, end: 1},
+		{name: "mouse forward", anchor: 1, end: 4, mouse: true},
+		{name: "mouse reverse", anchor: 4, end: 1, mouse: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			m := newSelectionModel(t)
+			if tt.mouse {
+				m.annot.selection.dragAnchor = tt.anchor
+				m.nav.diffCursor = tt.anchor
+				result, _ := m.dragDiffSelection(m.diffTopRow() + tt.end)
+				m = result.(Model)
+			} else {
+				require.True(t, m.beginSelection(tt.anchor))
+				require.True(t, m.extendSelectionTo(tt.end))
+			}
+			require.Equal(t, tt.end, m.nav.diffCursor, "selection direction controls the cursor endpoint")
+
+			m.startAnnotation()
+			m.annot.input.SetValue("range input")
+			plain := ansi.Strip(m.renderDiff())
+			inputAt := strings.Index(plain, "range input")
+			require.Greater(t, inputAt, 0)
+			for _, source := range []string{"old one", "old two", "new one", "new two"} {
+				assert.Less(t, strings.Index(plain, source), inputAt, source+" must remain above the input")
+			}
+			assert.Equal(t, tt.end, m.nav.diffCursor, "input placement must not move the cursor")
+		})
+	}
+}
+
+func TestModelRangeAnnotationInputHandlesWrapCollapsedAndViewportBottom(t *testing.T) {
+	t.Run("wrapped bottom row", func(t *testing.T) {
+		m := newSelectionModel(t)
+		m.layout.width = 32
+		m.layout.viewport.Width = 28
+		m.modes.wrap = true
+		m.file.lines[4].Content = "new two " + strings.Repeat("wrapped ", 12)
+		require.True(t, m.beginSelection(1))
+		require.True(t, m.extendSelectionTo(4))
+		m.startAnnotation()
+		m.annot.input.SetValue("range input")
+
+		plain := ansi.Strip(m.renderDiff())
+		assert.Greater(t, strings.Index(plain, "range input"), strings.LastIndex(plain, "wrapped"))
+	})
+
+	t.Run("collapsed hunk", func(t *testing.T) {
+		m := newSelectionModel(t)
+		m.modes.collapsed.enabled = true
+		m.modes.collapsed.expandedHunks = make(map[int]bool)
+		require.True(t, m.beginSelection(4))
+		require.True(t, m.extendSelectionTo(1))
+		m.startAnnotation()
+		m.annot.input.SetValue("range input")
+
+		plain := ansi.Strip(m.renderDiff())
+		assert.Contains(t, plain, "old one")
+		assert.Greater(t, strings.Index(plain, "range input"), strings.Index(plain, "new two"))
+	})
+
+	t.Run("reverse selection near viewport bottom", func(t *testing.T) {
+		m := newSelectionModel(t)
+		m.layout.viewport = viewport.New(96, 5)
+		m.layout.viewport.SetContent(m.renderDiff())
+		m.layout.viewport.SetYOffset(0)
+		require.True(t, m.beginSelection(4))
+		require.True(t, m.extendSelectionTo(1))
+		m.startAnnotation()
+		m.annot.input.SetValue("range input")
+		m.layout.viewport.SetContent(m.renderDiff())
+
+		assert.Equal(t, 1, m.layout.viewport.YOffset)
+		visible := ansi.Strip(m.layout.viewport.View())
+		assert.Contains(t, visible, "old one", "cursor endpoint remains visible")
+		assert.Contains(t, visible, "range input", "input remains visible")
+	})
+}
+
+func TestModelSavedRangeAnnotationKeepsExistingRenderPosition(t *testing.T) {
+	m := newSelectionModel(t)
+	require.True(t, m.beginSelection(4))
+	require.True(t, m.extendSelectionTo(1))
+	m.startAnnotation()
+	m.annot.input.SetValue("saved range")
+	m.saveAnnotation()
+
+	plain := ansi.Strip(m.renderDiff())
+	assert.Less(t, strings.Index(plain, "old one"), strings.Index(plain, "saved range"))
+	assert.Less(t, strings.Index(plain, "saved range"), strings.Index(plain, "old two"))
+}
+
 func TestModelRangeSelectionClampsAndCancels(t *testing.T) {
 	m := newSelectionModel(t)
 	m.beginSelection(1)
@@ -128,6 +230,8 @@ func TestModelWholeHunkTargetIsCanonicalFromEveryRow(t *testing.T) {
 		}
 		assert.Equal(t, annotation.ScopeHunk, m.annot.target.Scope)
 		m.annot.input.SetValue("whole change")
+		plain := ansi.Strip(m.renderDiff())
+		assert.Greater(t, strings.Index(plain, "whole change"), strings.Index(plain, "new two"))
 		m.saveAnnotation()
 		assert.Contains(t, m.store.FormatOutput(), "@@ -10,2 +10,2 @@ (hunk)")
 		assert.Contains(t, m.store.FormatOutput(), "-old one\n-old two\n+new one\n+new two\n\nwhole change\n")
