@@ -71,8 +71,10 @@ func (m Model) tryJumpToAnnotationTarget(target *overlay.AnnotationTarget) (tea.
 	}
 
 	if a.File == m.file.name {
-		if a.Line != 0 && m.findDiffLineIndex(a.Line, a.Type) < 0 {
-			return m, nil, false
+		if a.Line != 0 {
+			if _, ok := m.annotationDisplayOwnerIndex(a); !ok {
+				return m, nil, false
+			}
 		}
 		m.positionOnAnnotation(a)
 		return m, nil, true
@@ -89,9 +91,9 @@ func (m Model) tryJumpToAnnotationTarget(target *overlay.AnnotationTarget) (tea.
 	return model, cmd, true
 }
 
-// positionOnAnnotation moves the cursor to the given annotation's line, re-renders, and centers the viewport.
-// In collapsed mode, expands the hunk containing the target line so removed lines are visible.
-// For line-level annotations the cursor lands on the annotation comment sub-row (cursorOnAnnotation=true),
+// positionOnAnnotation moves the cursor to the annotation's display owner, re-renders, and centers the viewport.
+// In collapsed mode, expands the hunk containing the owner so removed lines are visible.
+// For non-file annotations the cursor lands on the annotation comment sub-row (cursorOnAnnotation=true),
 // matching what `j`/`k` navigation produces when stepping onto an annotated line. File-level annotations
 // (Line=0) use diffCursor=-1 which already represents the annotation row directly. Without this flag the
 // cursor would land on the diff line above the comment, leaving navigation visually one row off the target.
@@ -102,8 +104,8 @@ func (m *Model) positionOnAnnotation(a annotation.Annotation) {
 	if a.Line == 0 {
 		m.nav.diffCursor = -1
 	} else {
-		idx := m.findDiffLineIndex(a.Line, a.Type)
-		if idx >= 0 {
+		idx, ok := m.annotationDisplayOwnerIndex(a)
+		if ok {
 			m.nav.diffCursor = idx
 			m.ensureHunkExpanded(idx)
 			hunks := m.findHunks()

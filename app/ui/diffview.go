@@ -363,9 +363,6 @@ func (m Model) lineRenderFlags(idx int, annotationMap map[annotLineKey]string) l
 		f.liveInput = true
 		return f
 	}
-	if m.suppressesAnnotationAt(idx) {
-		return f
-	}
 	if len(annotationMap) == 0 {
 		return f
 	}
@@ -380,8 +377,9 @@ func (m Model) lineRenderFlags(idx int, annotationMap map[annotLineKey]string) l
 	return f
 }
 
-// buildAnnotationMap creates a lookup map of line annotations for the current file.
-// returns the annotation map and the file-level comment (empty if none).
+// buildAnnotationMap creates a lookup map keyed by each annotation's display
+// owner row. Scoped records therefore paint after their bottommost DiffLine,
+// while line and file annotations retain their existing positions.
 func (m Model) buildAnnotationMap() (annotations map[annotLineKey]string, fileComment string) {
 	all := m.store.Get(m.file.name)
 	annotations = make(map[annotLineKey]string, len(all))
@@ -390,8 +388,13 @@ func (m Model) buildAnnotationMap() (annotations map[annotLineKey]string, fileCo
 			fileComment = a.Comment
 			continue
 		}
-		key := annotLineKey{line: a.Line, changeType: diff.ChangeType(a.Type)}
-		if existing, ok := annotations[key]; ok {
+		idx, ok := m.annotationDisplayOwnerIndex(a)
+		if !ok {
+			continue
+		}
+		dl := m.file.lines[idx]
+		key := annotLineKey{line: m.diffLineNum(dl), changeType: dl.ChangeType}
+		if existing, exists := annotations[key]; exists {
 			annotations[key] = existing + "\n" + a.Comment
 		} else {
 			annotations[key] = a.Comment
@@ -750,9 +753,6 @@ func (m Model) renderAnnotationOrInput(b *strings.Builder, idx int, annotationMa
 		// strip textinput's unstyled trailing padding so extendLineBg can re-pad with DiffBg
 		line = strings.TrimRight(line, " ")
 		b.WriteString(m.extendLineBg(line, m.resolver.Color(style.ColorKeyDiffPaneBg)) + "\n")
-		return
-	}
-	if m.suppressesAnnotationAt(idx) {
 		return
 	}
 	dl := m.file.lines[idx]

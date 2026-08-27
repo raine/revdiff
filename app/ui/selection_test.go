@@ -159,17 +159,120 @@ func TestModelRangeAnnotationInputHandlesWrapCollapsedAndViewportBottom(t *testi
 	})
 }
 
-func TestModelSavedRangeAnnotationKeepsExistingRenderPosition(t *testing.T) {
-	m := newSelectionModel(t)
-	require.True(t, m.beginSelection(4))
-	require.True(t, m.extendSelectionTo(1))
-	m.startAnnotation()
-	m.annot.input.SetValue("saved range")
-	m.saveAnnotation()
+func TestModelSavedRangeAnnotationFollowsBottomSelection(t *testing.T) {
+	tests := []struct {
+		name        string
+		anchor, end int
+		mouse       bool
+	}{
+		{name: "keyboard forward", anchor: 1, end: 4},
+		{name: "keyboard reverse", anchor: 4, end: 1},
+		{name: "mouse forward", anchor: 1, end: 4, mouse: true},
+		{name: "mouse reverse", anchor: 4, end: 1, mouse: true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			m := newSelectionModel(t)
+			if tt.mouse {
+				m.annot.selection.dragAnchor = tt.anchor
+				m.nav.diffCursor = tt.anchor
+				result, _ := m.dragDiffSelection(m.diffTopRow() + tt.end)
+				m = result.(Model)
+			} else {
+				require.True(t, m.beginSelection(tt.anchor))
+				require.True(t, m.extendSelectionTo(tt.end))
+			}
+			m.startAnnotation()
+			m.annot.input.SetValue("saved range")
+			m.saveAnnotation()
 
+			plain := ansi.Strip(m.renderDiff())
+			commentAt := strings.Index(plain, "saved range")
+			require.Greater(t, commentAt, 0)
+			for _, source := range []string{"old one", "old two", "new one", "new two"} {
+				assert.Less(t, strings.Index(plain, source), commentAt)
+			}
+		})
+	}
+}
+
+func TestModelPersistedHunkAnnotationRoundTripPlacementAndInteraction(t *testing.T) {
+	m := newSelectionModel(t)
+	hunk, ok := m.annotationFromRows(annotation.ScopeHunk, 1, 5)
+	require.True(t, ok)
+	hunk.Comment = strings.Repeat("wrapped persisted comment ", 8) + "\nsecond line"
+	m.store.Add(hunk)
+
+	output := m.store.FormatOutput()
+	reloaded := annotation.NewStore()
+	require.NoError(t, reloaded.Load(strings.NewReader(output)))
+	assert.Equal(t, output, reloaded.FormatOutput())
+	m.store = reloaded
+	persisted := m.store.Get(m.file.name)[0]
+	owner, ok := m.annotationDisplayOwnerIndex(persisted)
+	require.True(t, ok)
+	assert.Equal(t, 4, owner)
+
+	m.layout.width = 38
+	m.layout.viewport = viewport.New(34, 5)
 	plain := ansi.Strip(m.renderDiff())
-	assert.Less(t, strings.Index(plain, "old one"), strings.Index(plain, "saved range"))
-	assert.Less(t, strings.Index(plain, "saved range"), strings.Index(plain, "old two"))
+	commentAt := strings.Index(plain, "wrapped persisted")
+	require.Greater(t, commentAt, strings.Index(plain, "new two"))
+	key := m.annotationKey(11, "+")
+	assert.Greater(t, m.wrappedAnnotationLineCount(key), 1)
+
+	m.positionOnAnnotation(persisted)
+	assert.Equal(t, owner, m.nav.diffCursor)
+	assert.True(t, m.annot.cursorOnAnnotation)
+	assert.Greater(t, m.layout.viewport.YOffset, 0)
+	row := m.cursorViewportY()
+	idx, onAnnotation := m.visualRowToDiffLine(row)
+	assert.Equal(t, owner, idx)
+	assert.True(t, onAnnotation)
+
+	m.startAnnotation()
+	assert.Equal(t, persisted.Comment, m.annot.existingMultiline)
+	m.cancelAnnotation()
+	m.positionOnAnnotation(persisted)
+	m.deleteAnnotation()
+	assert.Zero(t, m.store.Count())
+}
+
+func TestModelPersistedScopedAnnotationCollapsedOwnerAndLineFileRegressions(t *testing.T) {
+	m := newSelectionModel(t)
+	hunk, ok := m.annotationFromRows(annotation.ScopeHunk, 1, 5)
+	require.True(t, ok)
+	hunk.Comment = "persisted hunk"
+	m.store.Add(hunk)
+	m.store.Add(annotation.Annotation{File: m.file.name, Line: 12, Type: " ", Comment: "line note"})
+	m.store.Add(annotation.Annotation{File: m.file.name, Comment: "file note"})
+
+	m.modes.collapsed.enabled = true
+	m.modes.collapsed.expandedHunks = make(map[int]bool)
+	plain := ansi.Strip(m.renderDiff())
+	assert.NotContains(t, plain, "old one")
+	assert.Greater(t, strings.Index(plain, "persisted hunk"), strings.Index(plain, "new two"))
+	assert.Less(t, strings.Index(plain, "file note"), strings.Index(plain, "before"))
+	lineAt := strings.Index(plain, "line note")
+	assert.Greater(t, lineAt, strings.Index(plain, "between"))
+	assert.Less(t, lineAt, strings.Index(plain, "other"))
+}
+
+func TestModelPersistedRemovedRangeExpandsToVisibleOwnerOnJump(t *testing.T) {
+	m := newSelectionModel(t)
+	removed, ok := m.annotationFromRows(annotation.ScopeRange, 1, 3)
+	require.True(t, ok)
+	removed.Comment = "removed range"
+	m.store.Add(removed)
+	m.modes.collapsed.enabled = true
+	m.modes.collapsed.expandedHunks = make(map[int]bool)
+
+	assert.NotContains(t, ansi.Strip(m.renderDiff()), "removed range")
+	m.positionOnAnnotation(removed)
+	assert.Equal(t, 2, m.nav.diffCursor)
+	assert.True(t, m.annot.cursorOnAnnotation)
+	plain := ansi.Strip(m.renderDiff())
+	assert.Greater(t, strings.Index(plain, "removed range"), strings.Index(plain, "old two"))
 }
 
 func TestModelRangeSelectionClampsAndCancels(t *testing.T) {

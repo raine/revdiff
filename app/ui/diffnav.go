@@ -50,12 +50,10 @@ func (m *Model) moveDiffCursorDownWithHunks(hunks []int) {
 	// skip for delete-only placeholders — their annotations are only visible when expanded.
 	if m.nav.diffCursor >= 0 && m.nav.diffCursor < len(m.file.lines) {
 		dl := m.file.lines[m.nav.diffCursor]
-		if dl.ChangeType != diff.ChangeDivider && !m.isDeleteOnlyPlaceholder(m.nav.diffCursor, hunks) {
-			lineNum := m.diffLineNum(dl)
-			if m.store.Has(m.file.name, lineNum, string(dl.ChangeType)) {
-				m.annot.cursorOnAnnotation = true
-				return
-			}
+		if dl.ChangeType != diff.ChangeDivider && !m.isDeleteOnlyPlaceholder(m.nav.diffCursor, hunks) &&
+			m.lineHasDisplayedAnnotation(m.nav.diffCursor) {
+			m.annot.cursorOnAnnotation = true
+			return
 		}
 	}
 
@@ -97,9 +95,7 @@ func (m *Model) moveDiffCursorUpWithHunks(hunks []int) {
 		}
 		m.nav.diffCursor = i
 		// if this line has an annotation, land on it (skip for delete-only placeholders)
-		dl := m.file.lines[i]
-		lineNum := m.diffLineNum(dl)
-		if m.store.Has(m.file.name, lineNum, string(dl.ChangeType)) && !m.isDeleteOnlyPlaceholder(i, hunks) {
+		if m.lineHasDisplayedAnnotation(i) && !m.isDeleteOnlyPlaceholder(i, hunks) {
 			m.annot.cursorOnAnnotation = true
 		}
 		return

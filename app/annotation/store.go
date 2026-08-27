@@ -27,7 +27,7 @@ type ExcerptLine struct {
 // Annotation represents a user comment on a file or source span.
 type Annotation struct {
 	File    string // file path relative to repo root
-	Line    int    // anchor line used for display and navigation
+	Line    int    // identity anchor line; scoped display ownership is resolved from coordinates
 	EndLine int    // legacy same-side range end, 0 means no legacy range
 	Type    string // anchor change type: "+", "-", or " "
 	Comment string // user comment text

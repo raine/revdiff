@@ -134,56 +134,74 @@ func sameAnnotationTarget(a, b annotation.Annotation) bool {
 		a.NewStart == b.NewStart && a.NewCount == b.NewCount
 }
 
-// annotationAtCursor resolves the exact record represented by the annotation
-// marker under the cursor. A target chosen from the annotation list retains
-// priority while it still matches; direct cursor navigation uses store order.
+// annotationDisplayOwnerIndex resolves the DiffLine after which an annotation
+// is painted. Scoped records derive their owner from durable coordinates, so
+// saved and preloaded annotations use the same bottom row as the live input.
+func (m Model) annotationDisplayOwnerIndex(a annotation.Annotation) (int, bool) {
+	if a.File != m.file.name || a.Line == 0 {
+		return 0, false
+	}
+	if a.Scope == annotation.ScopeLine {
+		idx := m.findDiffLineIndex(a.Line, a.Type)
+		return idx, idx >= 0
+	}
+	span := a.OldCount + a.NewCount
+	if span <= 0 || span > len(m.file.lines) {
+		return 0, false
+	}
+	for start := 0; start+span <= len(m.file.lines); start++ {
+		candidate, ok := m.annotationFromRows(a.Scope, start, start+span)
+		if ok && sameAnnotationTarget(candidate, a) {
+			return start + span - 1, true
+		}
+	}
+	return 0, false
+}
+
+// annotationAtCursor resolves the exact record represented by the visible
+// annotation row under the cursor. A target chosen from the annotation list
+// retains priority while it still matches; direct cursor navigation uses store
+// order.
 func (m Model) annotationAtCursor(preferred *annotation.Annotation) (annotation.Annotation, bool) {
-	dl, ok := m.cursorDiffLine()
-	if !ok || dl.ChangeType == diff.ChangeDivider {
+	if m.nav.diffCursor < 0 || m.nav.diffCursor >= len(m.file.lines) {
 		return annotation.Annotation{}, false
 	}
-	line, typ := m.diffLineNum(dl), string(dl.ChangeType)
 	annotations := m.store.Get(m.file.name)
-	if preferred != nil && preferred.File == m.file.name && preferred.Line == line && preferred.Type == typ {
+	if preferred != nil {
 		for _, a := range annotations {
 			if sameAnnotationTarget(a, *preferred) {
-				return a, true
+				if idx, ok := m.annotationDisplayOwnerIndex(a); ok && idx == m.nav.diffCursor {
+					return a, true
+				}
+				break
 			}
 		}
 	}
 	for _, a := range annotations {
-		if a.Line == line && a.Type == typ {
+		if idx, ok := m.annotationDisplayOwnerIndex(a); ok && idx == m.nav.diffCursor {
 			return a, true
 		}
 	}
 	return annotation.Annotation{}, false
 }
 
-// annotationInputLineIndex returns the DiffLine that owns the live input row.
-// Range input follows the lower selection endpoint while the cursor remains at
-// the moving endpoint, preserving selection direction and editor target state.
-func (m Model) annotationInputLineIndex() int {
-	if r, ok := m.selectedRange(); ok {
-		return r.end - 1
+func (m Model) lineHasDisplayedAnnotation(idx int) bool {
+	for _, a := range m.store.Get(m.file.name) {
+		if owner, ok := m.annotationDisplayOwnerIndex(a); ok && owner == idx {
+			return true
+		}
 	}
-	return m.nav.diffCursor
+	return false
 }
 
-// suppressesAnnotationAt reports whether a saved annotation row is replaced by
-// the live input. Scoped targets are stored on their first source row, which can
-// differ from the lower selected row where their input is painted.
-func (m Model) suppressesAnnotationAt(idx int) bool {
-	if !m.annot.annotating || m.annot.fileAnnotating || idx < 0 || idx >= len(m.file.lines) {
-		return false
+// annotationInputLineIndex returns the DiffLine that owns the live input row.
+func (m Model) annotationInputLineIndex() int {
+	if m.annot.target != nil {
+		if idx, ok := m.annotationDisplayOwnerIndex(*m.annot.target); ok {
+			return idx
+		}
 	}
-	if idx == m.annotationInputLineIndex() {
-		return true
-	}
-	if m.annot.target == nil || m.annot.target.Scope == annotation.ScopeLine {
-		return false
-	}
-	dl := m.file.lines[idx]
-	return m.annot.target.Line == m.diffLineNum(dl) && m.annot.target.Type == string(dl.ChangeType)
+	return m.nav.diffCursor
 }
 
 // annotationInputViewportY returns the visual row occupied by the live input.
@@ -202,15 +220,7 @@ func (m Model) annotationInputViewportY() (int, bool) {
 		y = m.wrappedAnnotationLineCount(annotKeyFile)
 	}
 	for i := 0; i < idx; i++ {
-		h := m.hunkLineHeight(i, hunks, annotationSet)
-		if h > 0 && m.suppressesAnnotationAt(i) {
-			dl := m.file.lines[i]
-			key := m.annotationKey(m.diffLineNum(dl), string(dl.ChangeType))
-			if annotationSet[key] {
-				h -= m.wrappedAnnotationLineCount(key)
-			}
-		}
-		y += h
+		y += m.hunkLineHeight(i, hunks, annotationSet)
 	}
 	return y + m.wrappedLineCount(idx), true
 }
@@ -575,8 +585,23 @@ func (m Model) annotationPrefixBody(key string) (prefix, body string) {
 	for _, a := range m.store.Get(m.file.name) {
 		if key == annotKeyFile && a.Line == 0 {
 			comments = append(comments, a.Comment)
+			continue
 		}
-		if key != annotKeyFile && m.annotationKey(a.Line, a.Type) == key {
+		if key == annotKeyFile {
+			continue
+		}
+		if a.Scope == annotation.ScopeLine {
+			if m.annotationKey(a.Line, a.Type) == key {
+				comments = append(comments, a.Comment)
+			}
+			continue
+		}
+		idx, ok := m.annotationDisplayOwnerIndex(a)
+		if !ok {
+			continue
+		}
+		dl := m.file.lines[idx]
+		if m.annotationKey(m.diffLineNum(dl), string(dl.ChangeType)) == key {
 			comments = append(comments, a.Comment)
 		}
 	}
@@ -885,10 +910,12 @@ func (m Model) buildAnnotationSet() map[string]bool {
 	annotations := m.store.Get(m.file.name)
 	set := make(map[string]bool, len(annotations))
 	for _, a := range annotations {
-		if a.Line == 0 {
+		idx, ok := m.annotationDisplayOwnerIndex(a)
+		if !ok {
 			continue
 		}
-		set[m.annotationKey(a.Line, a.Type)] = true
+		dl := m.file.lines[idx]
+		set[m.annotationKey(m.diffLineNum(dl), string(dl.ChangeType))] = true
 	}
 	return set
 }

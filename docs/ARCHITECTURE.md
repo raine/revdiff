@@ -565,7 +565,7 @@ User presses 'a' on a diff line without a selection
           err != nil     → log, keep annotation mode open, preserve input
           content == ""  → cancelAnnotation (preserve existing annotation)
           otherwise      → saveComment(content, fileLevel, line, type)
-  → re-render shows annotation (multi-line aware) below diff line
+  → re-render shows line annotations below their line and scoped annotations below their bottom DiffLine
   → 'y' (copy_annotations): store.FormatOutput() → Clipboard.Copy(snapshot), revdiff stays open and store remains unchanged
   → 'Y' (copy_hunk): canonical hunk range → relative path + prefixed source rows → Clipboard.Copy(content)
   → 'O' (flush_output, requires --output): store.WriteFile(path) → atomic write, revdiff stays open (annotate → flush → hand to agent → 'R' reload loop)
