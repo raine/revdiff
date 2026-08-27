@@ -566,6 +566,7 @@ User presses 'a' on a diff line without a selection
           content == ""  → cancelAnnotation (preserve existing annotation)
           otherwise      → saveComment(content, fileLevel, line, type)
   → re-render shows line annotations below their line and scoped annotations below their bottom DiffLine
+  → 'd' deletes the visible annotation row, or a whole-hunk annotation from any change row in its canonical hunk
   → 'y' (copy_annotations): store.FormatOutput() → Clipboard.Copy(snapshot), revdiff stays open and store remains unchanged
   → 'Y' (copy_hunk): canonical hunk range → relative path + prefixed source rows → Clipboard.Copy(content)
   → 'O' (flush_output, requires --output): store.WriteFile(path) → atomic write, revdiff stays open (annotate → flush → hand to agent → 'R' reload loop)

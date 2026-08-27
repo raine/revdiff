@@ -434,30 +434,59 @@ func (m *Model) deleteFileAnnotation() tea.Cmd {
 	return nil
 }
 
-// deleteAnnotation removes the annotation on the current cursor line if one exists.
-// handles both file-level annotations (cursor at -1) and regular line annotations.
-// only works when cursor is on the annotation sub-line (cursorOnAnnotation=true) or file annotation line.
-// returns a command to load the new file if the tree selection changed after filter refresh.
+// hunkAnnotationAtCursor resolves the persisted whole-hunk annotation for the
+// canonical hunk containing the current ordinary change row. Range and line
+// annotations are deliberately excluded.
+func (m Model) hunkAnnotationAtCursor() (annotation.Annotation, bool) {
+	if m.file.name == "" || m.file.requestedPath != "" || m.nav.diffCursor < 0 ||
+		m.nav.diffCursor >= len(m.file.lines) {
+		return annotation.Annotation{}, false
+	}
+	dl := m.file.lines[m.nav.diffCursor]
+	if !isHunkChange(dl.ChangeType) || dl.IsBinary || dl.IsPlaceholder {
+		return annotation.Annotation{}, false
+	}
+	hunks := m.findHunks()
+	if m.isDeleteOnlyPlaceholder(m.nav.diffCursor, hunks) {
+		return annotation.Annotation{}, false
+	}
+	r, ok := m.hunkRangeAt(m.nav.diffCursor)
+	if !ok {
+		return annotation.Annotation{}, false
+	}
+	target, ok := m.annotationFromRows(annotation.ScopeHunk, r.start, r.end)
+	if !ok {
+		return annotation.Annotation{}, false
+	}
+	for _, a := range m.store.Get(m.file.name) {
+		if a.Scope == annotation.ScopeHunk && sameAnnotationTarget(a, target) {
+			return a, true
+		}
+	}
+	return annotation.Annotation{}, false
+}
+
+// deleteAnnotation removes the annotation selected by the cursor. Annotation
+// sub-rows retain their exact-target behavior; an ordinary change row targets
+// the whole-hunk annotation for its canonical hunk when one exists.
 func (m *Model) deleteAnnotation() tea.Cmd {
 	if m.cursorOnFileAnnotationLine() {
 		return m.deleteFileAnnotation()
 	}
 
-	if !m.annot.cursorOnAnnotation {
-		return nil
-	}
-
-	dl, ok := m.cursorDiffLine()
-	if !ok || dl.ChangeType == diff.ChangeDivider {
-		return nil
-	}
-
-	lineNum := m.diffLineNum(dl)
 	deleted := false
-	if target, ok := m.annotationAtCursor(m.annot.target); ok {
+	if m.annot.cursorOnAnnotation {
+		dl, ok := m.cursorDiffLine()
+		if !ok || dl.ChangeType == diff.ChangeDivider {
+			return nil
+		}
+		if target, found := m.annotationAtCursor(m.annot.target); found {
+			deleted = m.store.DeleteExact(target)
+		} else {
+			deleted = m.store.Delete(m.file.name, m.diffLineNum(dl), string(dl.ChangeType))
+		}
+	} else if target, ok := m.hunkAnnotationAtCursor(); ok {
 		deleted = m.store.DeleteExact(target)
-	} else {
-		deleted = m.store.Delete(m.file.name, lineNum, string(dl.ChangeType))
 	}
 	if deleted {
 		m.pendingAnnotJump = nil    // clear before refreshFilter which may trigger file load

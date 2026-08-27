@@ -258,6 +258,193 @@ func TestModelPersistedScopedAnnotationCollapsedOwnerAndLineFileRegressions(t *t
 	assert.Less(t, lineAt, strings.Index(plain, "other"))
 }
 
+func TestModelDeleteHunkAnnotationFromAnyCanonicalHunkRow(t *testing.T) {
+	tests := []struct {
+		name   string
+		cursor int
+		mutate func(*Model)
+	}{
+		{name: "first remove", cursor: 1},
+		{name: "middle remove wrapped", cursor: 2, mutate: func(m *Model) { m.modes.wrap = true }},
+		{name: "middle add compact", cursor: 3, mutate: func(m *Model) { m.modes.compact = true }},
+		{name: "last add collapsed", cursor: 4, mutate: func(m *Model) {
+			m.modes.collapsed.enabled = true
+			m.modes.collapsed.expandedHunks = map[int]bool{1: true}
+		}},
+		{name: "reverse origin", cursor: 3, mutate: func(m *Model) {
+			require.True(t, m.beginSelection(4))
+			require.True(t, m.extendSelectionTo(1))
+			r, ok := m.selectedRange()
+			require.True(t, ok)
+			m.startScopedAnnotation(annotation.ScopeHunk, r)
+			m.annot.input.SetValue("reverse hunk")
+			m.saveAnnotation()
+		}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			m := newSelectionModel(t)
+			if tt.mutate != nil {
+				tt.mutate(&m)
+			}
+			if m.store.Count() == 0 {
+				hunk, ok := m.annotationFromRows(annotation.ScopeHunk, 1, 5)
+				require.True(t, ok)
+				hunk.Comment = "whole hunk"
+				m.store.Add(hunk)
+			}
+			m.nav.diffCursor = tt.cursor
+			m.annot.cursorOnAnnotation = false
+
+			result, cmd := m.dispatchAction(keymap.ActionDeleteAnnotation)
+			m = result.(Model)
+			assert.Nil(t, cmd)
+			assert.Zero(t, m.store.Count())
+		})
+	}
+}
+
+func TestModelDeletePreloadedHunkAnnotationFromDiffRow(t *testing.T) {
+	m := newSelectionModel(t)
+	hunk, ok := m.annotationFromRows(annotation.ScopeHunk, 1, 5)
+	require.True(t, ok)
+	hunk.Comment = "preloaded"
+	original := annotation.NewStore()
+	original.Add(hunk)
+	reloaded := annotation.NewStore()
+	require.NoError(t, reloaded.Load(strings.NewReader(original.FormatOutput())))
+	m.store = reloaded
+	m.nav.diffCursor = 2
+
+	m.deleteAnnotation()
+	assert.Zero(t, m.store.Count())
+}
+
+func TestModelDeleteHunkAnnotationDiffRowPreservesLineAndRangeAnnotations(t *testing.T) {
+	m := newSelectionModel(t)
+	hunk, ok := m.annotationFromRows(annotation.ScopeHunk, 1, 5)
+	require.True(t, ok)
+	hunk.Comment = "hunk"
+	rng, ok := m.annotationFromRows(annotation.ScopeRange, 1, 3)
+	require.True(t, ok)
+	rng.Comment = "range"
+	line := annotation.Annotation{File: m.file.name, Line: 11, Type: "+", Comment: "line"}
+	m.store.Add(hunk)
+	m.store.Add(rng)
+	m.store.Add(line)
+	m.nav.diffCursor = 4
+	m.annot.cursorOnAnnotation = false
+
+	m.deleteAnnotation()
+	items := m.store.Get(m.file.name)
+	require.Len(t, items, 2)
+	assert.Equal(t, annotation.ScopeRange, items[0].Scope)
+	assert.Equal(t, annotation.ScopeLine, items[1].Scope)
+
+	m.annot.cursorOnAnnotation = true
+	target := line
+	m.annot.target = &target
+	m.deleteAnnotation()
+	items = m.store.Get(m.file.name)
+	require.Len(t, items, 1)
+	assert.Equal(t, annotation.ScopeRange, items[0].Scope)
+}
+
+func TestModelDeleteHunkAnnotationDiffRowNoOps(t *testing.T) {
+	tests := []struct {
+		name   string
+		cursor int
+		mutate func(*Model)
+		add    bool
+	}{
+		{name: "context before", cursor: 0, add: true},
+		{name: "context after", cursor: 5, add: true},
+		{name: "adjacent hunk", cursor: 6, add: true},
+		{name: "placeholder", cursor: 1, add: true, mutate: func(m *Model) { m.file.lines[1].IsPlaceholder = true }},
+		{name: "unloaded file", cursor: 1, add: true, mutate: func(m *Model) { m.file.requestedPath = "other.go" }},
+		{name: "hunk without annotation", cursor: 2},
+		{name: "line annotation only", cursor: 4, mutate: func(m *Model) {
+			m.store.Add(annotation.Annotation{File: m.file.name, Line: 11, Type: "+", Comment: "line"})
+		}},
+		{name: "range annotation only", cursor: 2, mutate: func(m *Model) {
+			rng, ok := m.annotationFromRows(annotation.ScopeRange, 1, 3)
+			require.True(t, ok)
+			rng.Comment = "range"
+			m.store.Add(rng)
+		}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			m := newSelectionModel(t)
+			if tt.add {
+				hunk, ok := m.annotationFromRows(annotation.ScopeHunk, 1, 5)
+				require.True(t, ok)
+				hunk.Comment = "hunk"
+				m.store.Add(hunk)
+			}
+			if tt.mutate != nil {
+				tt.mutate(&m)
+			}
+			before := m.store.FormatOutput()
+			m.nav.diffCursor = tt.cursor
+			m.annot.cursorOnAnnotation = false
+			m.deleteAnnotation()
+			assert.Equal(t, before, m.store.FormatOutput())
+		})
+	}
+}
+
+func TestModelDeleteHunkAnnotationIgnoresCollapsedDeletePlaceholder(t *testing.T) {
+	m := newSelectionModel(t)
+	m.file.lines = []diff.DiffLine{
+		{OldNum: 9, NewNum: 9, Content: "before", ChangeType: diff.ChangeContext},
+		{OldNum: 10, Content: "gone one", ChangeType: diff.ChangeRemove},
+		{OldNum: 11, Content: "gone two", ChangeType: diff.ChangeRemove},
+		{OldNum: 12, NewNum: 10, Content: "after", ChangeType: diff.ChangeContext},
+	}
+	hunk, ok := m.annotationFromRows(annotation.ScopeHunk, 1, 3)
+	require.True(t, ok)
+	hunk.Comment = "delete-only hunk"
+	m.store.Add(hunk)
+	m.modes.collapsed.enabled = true
+	m.modes.collapsed.expandedHunks = make(map[int]bool)
+	m.nav.diffCursor = 1
+
+	m.deleteAnnotation()
+	assert.Equal(t, 1, m.store.Count())
+
+	m.modes.collapsed.expandedHunks[1] = true
+	m.nav.diffCursor = 2
+	m.deleteAnnotation()
+	assert.Zero(t, m.store.Count())
+}
+
+func TestModelDeleteHunkAnnotationRefreshesFilterAndFileNavigation(t *testing.T) {
+	files := []string{"a.go", "b.go"}
+	m := testModel(files, map[string][]diff.DiffLine{"b.go": {{NewNum: 1, Content: "b", ChangeType: diff.ChangeContext}}})
+	m.tree = testNewFileTree(files)
+	m.file.name = "a.go"
+	m.file.lines = selectionFixture()
+	hunk, ok := m.annotationFromRows(annotation.ScopeHunk, 1, 5)
+	require.True(t, ok)
+	hunk.Comment = "hunk"
+	m.store.Add(hunk)
+	m.store.Add(annotation.Annotation{File: "b.go", Line: 1, Type: " ", Comment: "other"})
+	m.tree.ToggleFilter(m.annotatedFiles())
+	m.nav.diffCursor = 3
+	pending := true
+	m.nav.pendingHunkJump = &pending
+	target := hunk
+	m.pendingAnnotJump = &target
+
+	cmd := m.deleteAnnotation()
+	require.NotNil(t, cmd)
+	assert.Nil(t, m.nav.pendingHunkJump)
+	assert.Nil(t, m.pendingAnnotJump)
+	assert.Equal(t, "b.go", m.tree.SelectedFile())
+	assert.Equal(t, "b.go", m.file.requestedPath)
+}
+
 func TestModelPersistedRemovedRangeExpandsToVisibleOwnerOnJump(t *testing.T) {
 	m := newSelectionModel(t)
 	removed, ok := m.annotationFromRows(annotation.ScopeRange, 1, 3)
