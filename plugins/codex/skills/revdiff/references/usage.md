@@ -30,7 +30,7 @@ printf '# Plan\n\nBody\n' | revdiff --stdin --stdin-name plan.md  # review piped
 some-command | revdiff --stdin --output /tmp/annotations.txt      # annotate generated output
 ```
 
-`--commit` compares one commit with its first parent, or with the VCS root tree for a root commit. It works in Git, Mercurial, and Jujutsu repositories. Positional refs keep their existing meanings. `--commit` cannot be combined with positional refs, `--staged`, `--all-files`, `--stdin`, or `--compare-old`/`--compare-new`.
+`--commit` compares one commit with its first parent, or with the VCS root tree for a root commit. It works in Git, Mercurial, and Jujutsu repositories. Positional refs keep their existing meanings. `--commit` cannot be combined with positional refs, `--staged`, `--all-files`, `--only`, `--stdin`, or `--compare-old`/`--compare-new`.
 
 ## Single-File Mode
 

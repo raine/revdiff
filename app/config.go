@@ -131,13 +131,13 @@ func (o options) ref() string {
 }
 
 // startupUntracked reports whether --untracked should activate.
-// disabled in two-ref mode (both `a b` and `a..b` forms) because untracked
-// files are working-tree state, not part of a historical diff between refs.
+// disabled in one-commit and two-ref modes because untracked files are
+// working-tree state, not part of a historical diff.
 func (o options) startupUntracked() bool {
 	if !o.Untracked {
 		return false
 	}
-	if o.Refs.Against != "" || strings.Contains(o.Refs.Base, "..") {
+	if o.Commit.set || o.Refs.Against != "" || strings.Contains(o.Refs.Base, "..") {
 		return false
 	}
 	return true
@@ -224,6 +224,7 @@ func validateCommitOption(opts options) error {
 		{opts.Refs.Base != "" || opts.Refs.Against != "", "refs"},
 		{opts.Staged, "--staged"},
 		{opts.AllFiles, "--all-files"},
+		{len(opts.Only) > 0, "--only"},
 		{opts.Stdin, "--stdin"},
 		{opts.CompareOld != "" || opts.CompareNew != "", "--compare-old/--compare-new"},
 	}

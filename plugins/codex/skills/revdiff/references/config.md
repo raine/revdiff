@@ -19,7 +19,7 @@ Then uncomment and edit the values you want to change.
 | Option | Env var | Description | Default |
 |--------|---------|-------------|---------|
 | `--staged` | `REVDIFF_STAGED` | Show staged changes | `false` |
-| `--commit[=REVISION]` | | Show changes introduced by one commit (CLI-only, not saved in config) | `HEAD` |
+| `--commit[=REVISION]` | | Show changes introduced by one commit | `HEAD` |
 | `--untracked` | `REVDIFF_UNTRACKED` | Show untracked files in the tree | `false` |
 | `--tree-width` | `REVDIFF_TREE_WIDTH` | File tree panel width in units (1-10) | `2` |
 | `--tab-width` | `REVDIFF_TAB_WIDTH` | Spaces per tab character | `4` |
@@ -155,7 +155,7 @@ unmap q
 map ctrl+d half_page_down
 ```
 
-Available actions: `down`, `up`, `page_down`, `page_up`, `half_page_down`, `half_page_up`, `home`, `end`, `scroll_left`, `scroll_right`, `scroll_center`, `scroll_top`, `scroll_bottom`, `scroll_diff_down`, `scroll_diff_up`, `next_item`, `prev_item`, `jump_file`, `next_hunk`, `prev_hunk`, `open_file_in_editor`, `toggle_pane`, `focus_tree`, `focus_diff`, `search`, `confirm`, `annotate_file`, `delete_annotation`, `annot_list`, `open_editor`, `next_annotation`, `prev_annotation`, `copy_annotations`, `flush_output`, `toggle_collapsed`, `toggle_compact`, `toggle_wrap`, `toggle_tree`, `toggle_line_numbers`, `toggle_blame`, `toggle_word_diff`, `toggle_hunk`, `toggle_untracked`, `mark_reviewed`, `theme_select`, `filter`, `info`, `reload`, `quit`, `discard_quit`, `help`, `dismiss`
+Available actions: `down`, `up`, `page_down`, `page_up`, `half_page_down`, `half_page_up`, `home`, `end`, `scroll_left`, `scroll_right`, `scroll_center`, `scroll_top`, `scroll_bottom`, `scroll_diff_down`, `scroll_diff_up`, `next_item`, `prev_item`, `jump_file`, `next_hunk`, `prev_hunk`, `copy_hunk`, `open_file_in_editor`, `toggle_pane`, `focus_tree`, `focus_diff`, `search`, `confirm`, `annotate_file`, `delete_annotation`, `annot_list`, `open_editor`, `next_annotation`, `prev_annotation`, `copy_annotations`, `flush_output`, `toggle_collapsed`, `toggle_compact`, `toggle_wrap`, `toggle_tree`, `toggle_line_numbers`, `toggle_blame`, `toggle_word_diff`, `toggle_hunk`, `toggle_untracked`, `mark_reviewed`, `theme_select`, `filter`, `info`, `reload`, `quit`, `discard_quit`, `help`, `dismiss`
 
 Fixed modal keys (Enter, Esc in annotation/search input, confirm discard) are not remappable. Keymap-resolved actions like `open_editor` work during annotation input and can be rebound. Chord bindings do not fire during text input — use single-key `ctrl+*` bindings for actions that need to work during annotation input.
 

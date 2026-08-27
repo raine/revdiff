@@ -103,7 +103,7 @@ func makeGitRenderer(g *diff.Git, opts options, repoRoot string) (ui.Renderer, s
 	switch {
 	case opts.AllFiles:
 		r = diff.NewDirectoryReader(repoRoot)
-	case len(opts.Only) > 0 && !opts.Commit.set:
+	case len(opts.Only) > 0:
 		r = diff.NewFallbackRenderer(g, opts.Only, repoRoot)
 	default:
 		r = g
@@ -118,7 +118,7 @@ func makeHgRenderer(h *diff.Hg, opts options, repoRoot string) (ui.Renderer, str
 	switch {
 	case opts.AllFiles:
 		return nil, "", errors.New("--all-files is not supported in mercurial repositories")
-	case len(opts.Only) > 0 && !opts.Commit.set:
+	case len(opts.Only) > 0:
 		r = diff.NewFallbackRenderer(h, opts.Only, repoRoot)
 	default:
 		r = h
@@ -133,7 +133,7 @@ func makeJjRenderer(j *diff.Jj, opts options, repoRoot string) (ui.Renderer, str
 	switch {
 	case opts.AllFiles:
 		r = diff.NewJjDirectoryReader(repoRoot)
-	case len(opts.Only) > 0 && !opts.Commit.set:
+	case len(opts.Only) > 0:
 		r = diff.NewFallbackRenderer(j, opts.Only, repoRoot)
 	default:
 		r = j

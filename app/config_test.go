@@ -499,6 +499,7 @@ func TestOptions_StartupUntracked(t *testing.T) {
 		{"flag on, single ref", mk(true, false, "main", ""), true},
 		{"flag on, two refs (a b form)", mk(true, false, "main", "feature"), false},
 		{"flag on, dot-dot ref (a..b form)", mk(true, false, "main..feature", ""), false},
+		{"flag on, one-commit mode", options{Untracked: true, Commit: commitOption{target: "HEAD", set: true}}, false},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -776,6 +777,7 @@ func TestParseArgs_CommitConflicts(t *testing.T) {
 		{name: "two refs", args: []string{"--commit", "main", "feature"}, want: "--commit cannot be used with refs"},
 		{name: "staged", args: []string{"--commit", "--staged"}, want: "--commit cannot be used with --staged"},
 		{name: "all files", args: []string{"--commit", "--all-files"}, want: "--commit cannot be used with --all-files"},
+		{name: "only", args: []string{"--commit", "--only=file.go"}, want: "--commit cannot be used with --only"},
 		{name: "stdin", args: []string{"--commit", "--stdin"}, want: "--commit cannot be used with --stdin"},
 		{name: "compare", args: []string{"--commit", "--compare-old=a", "--compare-new=b"}, want: "--commit cannot be used with --compare-old/--compare-new"},
 	}

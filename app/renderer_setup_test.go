@@ -59,15 +59,6 @@ func TestMakeGitRenderer_WithOnly(t *testing.T) {
 	assert.Equal(t, dir, workDir)
 }
 
-func TestMakeGitRenderer_CommitOnlyDoesNotReadWorkingTreeFallback(t *testing.T) {
-	dir := t.TempDir()
-	g := diff.NewGit(dir)
-	opts := options{Only: []string{"file.md"}, Commit: commitOption{target: "HEAD", set: true}}
-	renderer, _, err := makeGitRenderer(g, opts, dir)
-	require.NoError(t, err)
-	assert.Same(t, g, renderer)
-}
-
 func TestMakeGitRenderer_WithoutOnly(t *testing.T) {
 	dir := t.TempDir()
 	g := diff.NewGit(dir)

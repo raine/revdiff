@@ -362,7 +362,7 @@ Positional arguments support several forms:
 - `revdiff main..feature` - same as above, using git's dot-dot syntax
 - `revdiff main...feature` - changes since `feature` diverged from `main`
 
-Use `revdiff --commit` to review exactly the changes introduced by `HEAD`, independent of staged, unstaged, and untracked work. Use `revdiff --commit=REVISION` for another commit. A merge commit is compared with its first parent. A root commit is compared with the empty tree in Git, Mercurial's null revision, or Jujutsu's synthetic root commit. `--commit` works in Git, Mercurial, and Jujutsu repositories and cannot be combined with positional refs, `--staged`, `--all-files`, `--stdin`, or `--compare-old`/`--compare-new`.
+Use `revdiff --commit` to review exactly the changes introduced by `HEAD`, independent of staged, unstaged, and untracked work. Use `revdiff --commit=REVISION` for another commit. A merge commit is compared with its first parent. A root commit is compared with the empty tree in Git, Mercurial's null revision, or Jujutsu's synthetic root commit. `--commit` works in Git, Mercurial, and Jujutsu repositories and cannot be combined with positional refs, `--staged`, `--all-files`, `--only`, `--stdin`, or `--compare-old`/`--compare-new`.
 
 ### Options
 
