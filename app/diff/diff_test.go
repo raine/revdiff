@@ -104,6 +104,28 @@ func TestParseUnifiedDiff_MultiHunk(t *testing.T) {
 	assert.Equal(t, []string{`import "os"`, "    os.Exit(0)"}, additions)
 }
 
+func TestParseUnifiedDiff_RecordsZeroCountAnchors(t *testing.T) {
+	raw := "--- a\n+++ b\n" +
+		"@@ -50,0 +51,1 @@\n+inserted\n" +
+		"@@ -70,1 +71,0 @@\n-removed\n"
+	lines, err := parseUnifiedDiff(raw, 0)
+	require.NoError(t, err)
+
+	var added, removed DiffLine
+	for _, line := range lines {
+		switch line.ChangeType {
+		case ChangeAdd:
+			added = line
+		case ChangeRemove:
+			removed = line
+		}
+	}
+	assert.Equal(t, 50, added.OldAnchor)
+	assert.Equal(t, 51, added.NewNum)
+	assert.Equal(t, 71, removed.NewAnchor)
+	assert.Equal(t, 70, removed.OldNum)
+}
+
 // TestParseUnifiedDiff_GapLabels exercises every gap-label branch through the
 // real parser (not a helper in isolation). Covers: plural gaps, singular gap,
 // omitted-length hunk headers (@@ -N +N @@), insertion-only hunks (@@ -K,0 ...),

@@ -165,6 +165,13 @@ func (m Model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	if msg.Action == tea.MouseActionMotion && m.annot.selection.dragging {
+		// Cell-motion mode also reports hover motion with no button held. Only
+		// left-button motion extends a drag, so a missed or delayed release
+		// cannot turn later pointer movement into an unintended selection.
+		if msg.Button != tea.MouseButtonLeft {
+			m.annot.selection.dragging = false
+			return m, nil
+		}
 		if zone == hitDiff {
 			return m.dragDiffSelection(msg.Y)
 		}

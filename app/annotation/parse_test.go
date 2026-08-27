@@ -1,6 +1,7 @@
 package annotation
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
@@ -151,6 +152,48 @@ func TestParse_BodyBeforeAnyHeader(t *testing.T) {
 	// Garbage before the first header is an error.
 	_, err := Parse(strings.NewReader("garbage\n## file.go:1 (+)\nbody\n"))
 	assert.Error(t, err)
+}
+
+func TestParse_RejectsEmptyOrImpossibleScopedCoordinates(t *testing.T) {
+	maxInt := int(^uint(0) >> 1)
+	inputs := []string{
+		"## a.go @@ -0,0 +0,0 @@ (range)\n\ncomment\n",
+		"## a.go @@ -0,1 +1,1 @@ (range)\n-old\n+new\n\ncomment\n",
+		"## a.go @@ -1,1 +0,1 @@ (hunk)\n-old\n+new\n\ncomment\n",
+		fmt.Sprintf("## a.go @@ -1,%d +1,1 @@ (range)\n", maxInt),
+	}
+	for _, input := range inputs {
+		_, err := Parse(strings.NewReader(input))
+		assert.Error(t, err, "input should be rejected: %q", input)
+	}
+}
+
+func TestParse_ScopedEmptyCommentRoundTrip(t *testing.T) {
+	s := NewStore()
+	s.Add(Annotation{
+		File: "a.go", Line: 3, Type: "+", Scope: ScopeRange,
+		OldStart: 2, NewStart: 3, NewCount: 1,
+		Excerpt: []ExcerptLine{{Type: "+", Content: "added"}},
+	})
+	s.Add(Annotation{
+		File: "a.go", Line: 7, Type: "-", Scope: ScopeHunk,
+		OldStart: 7, OldCount: 1, NewStart: 6,
+		Excerpt: []ExcerptLine{{Type: "-", Content: "removed"}},
+	})
+
+	formatted := s.FormatOutput()
+	parsed, err := Parse(strings.NewReader(formatted))
+	require.NoError(t, err)
+	require.Len(t, parsed, 2)
+	assert.Empty(t, parsed[0].Comment)
+	assert.Empty(t, parsed[1].Comment)
+	assert.Equal(t, formatted, func() string {
+		got := NewStore()
+		for _, a := range parsed {
+			got.Add(a)
+		}
+		return got.FormatOutput()
+	}())
 }
 
 func TestParse_RoundTrip(t *testing.T) {

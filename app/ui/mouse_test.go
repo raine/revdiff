@@ -1591,6 +1591,27 @@ func TestModel_HandleMouse_DragSelectsUnderlyingDiffRows(t *testing.T) {
 	assert.True(t, m.annot.selection.active, "release preserves the selected range")
 }
 
+func TestModel_HandleMouse_NoButtonCellMotionDoesNotExtendDrag(t *testing.T) {
+	lines := selectionFixture()
+	m := mouseTestModel(t, []string{"a.go"}, map[string][]diff.DiffLine{"a.go": lines})
+	m.file.lines = lines
+	m.layout.viewport.SetContent(m.renderDiff())
+
+	result, _ := m.Update(leftPressAt(60, m.diffTopRow()+1))
+	m = result.(Model)
+	require.True(t, m.annot.selection.dragging)
+
+	hover := tea.MouseMsg(tea.MouseEvent{
+		X: 60, Y: m.diffTopRow() + 4,
+		Button: tea.MouseButtonNone, Action: tea.MouseActionMotion,
+	})
+	result, _ = m.Update(hover)
+	m = result.(Model)
+	assert.False(t, m.annot.selection.active)
+	assert.False(t, m.annot.selection.dragging)
+	assert.Equal(t, 1, m.annot.selection.dragAnchor)
+}
+
 func TestModel_HandleMouse_ClickPreservesActiveSelection(t *testing.T) {
 	m := mouseTestModel(t, []string{"a.go"}, map[string][]diff.DiffLine{"a.go": selectionFixture()})
 	m.file.lines = selectionFixture()

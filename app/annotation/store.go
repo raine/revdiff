@@ -50,6 +50,7 @@ func NewStore() *Store { return &Store{annotations: make(map[string][]Annotation
 
 // Add inserts an annotation or replaces one with the same scope identity.
 func (s *Store) Add(a Annotation) {
+	a = cloneAnnotation(a)
 	existing := s.annotations[a.File]
 	if i, ok := s.findExact(a); ok {
 		existing[i] = a
@@ -115,17 +116,52 @@ func sameIdentity(a, b Annotation) bool {
 
 // Get returns annotations for file in stable source and scope order.
 func (s *Store) Get(file string) []Annotation {
-	result := append([]Annotation(nil), s.annotations[file]...)
+	stored := s.annotations[file]
+	result := make([]Annotation, len(stored))
+	for i, a := range stored {
+		result[i] = cloneAnnotation(a)
+	}
 	sort.SliceStable(result, func(i, j int) bool {
-		if result[i].Line != result[j].Line {
-			return result[i].Line < result[j].Line
+		a, b := result[i], result[j]
+		if a.Line != b.Line {
+			return a.Line < b.Line
 		}
-		if result[i].Type != result[j].Type {
-			return result[i].Type < result[j].Type
+		if a.Type != b.Type {
+			return a.Type < b.Type
 		}
-		return result[i].Scope < result[j].Scope
+		if scopeOrder(a.Scope) != scopeOrder(b.Scope) {
+			return scopeOrder(a.Scope) < scopeOrder(b.Scope)
+		}
+		if a.OldStart != b.OldStart {
+			return a.OldStart < b.OldStart
+		}
+		if a.OldCount != b.OldCount {
+			return a.OldCount < b.OldCount
+		}
+		if a.NewStart != b.NewStart {
+			return a.NewStart < b.NewStart
+		}
+		return a.NewCount < b.NewCount
 	})
 	return result
+}
+
+func cloneAnnotation(a Annotation) Annotation {
+	a.Excerpt = append([]ExcerptLine(nil), a.Excerpt...)
+	return a
+}
+
+func scopeOrder(scope Scope) int {
+	switch scope {
+	case ScopeLine:
+		return 0
+	case ScopeRange:
+		return 1
+	case ScopeHunk:
+		return 2
+	default:
+		return 3
+	}
 }
 
 // Count returns the number of stored annotations.

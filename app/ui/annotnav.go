@@ -93,11 +93,12 @@ func (m Model) currentAnnotKey() cursorAnnotKey {
 	}
 	line := m.diffLineNum(dl)
 	typ := string(dl.ChangeType)
-	key := cursorAnnotKey{file: file, line: line, typ: typ, onAnnot: m.store.Has(file, line, typ)}
-	if m.annot.target != nil && m.annot.target.File == file && m.annot.target.Line == line && m.annot.target.Type == typ {
-		key.scope = m.annot.target.Scope
-		key.oldStart, key.oldCount = m.annot.target.OldStart, m.annot.target.OldCount
-		key.newStart, key.newCount = m.annot.target.NewStart, m.annot.target.NewCount
+	key := cursorAnnotKey{file: file, line: line, typ: typ}
+	if target, ok := m.annotationAtCursor(m.annot.target); ok {
+		key.onAnnot = true
+		key.scope = target.Scope
+		key.oldStart, key.oldCount = target.OldStart, target.OldCount
+		key.newStart, key.newCount = target.NewStart, target.NewCount
 	}
 	return key
 }

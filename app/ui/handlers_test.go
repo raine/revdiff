@@ -27,12 +27,12 @@ func TestModel_MarkReviewedFromTreePane(t *testing.T) {
 	m.file.name = "a.go"
 	m.layout.focus = paneTree
 
-	// space bar toggles reviewed
+	// m toggles reviewed
 	result, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'m'}})
 	model := result.(Model)
 	assert.Equal(t, 1, model.tree.ReviewedCount(), "m should mark current file as reviewed")
 
-	// space again toggles off
+	// m again toggles off
 	result, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'m'}})
 	model = result.(Model)
 	assert.Equal(t, 0, model.tree.ReviewedCount(), "m should unmark reviewed file")
@@ -83,7 +83,7 @@ func TestModel_MarkReviewedFromTreePaneUsesSelectedFile(t *testing.T) {
 	require.NotNil(t, cmd)
 	result, _ = model.Update(cmd())
 	model = result.(Model)
-	assert.Equal(t, 1, model.tree.ReviewedCount(), "space in tree pane should mark selected file (b.go)")
+	assert.Equal(t, 1, model.tree.ReviewedCount(), "m in tree pane should mark selected file (b.go)")
 	// verify it's b.go that's reviewed by removing that exact mark
 	model.tree.Unreview("b.go")
 	assert.Equal(t, 0, model.tree.ReviewedCount(), "b.go was the reviewed file")
@@ -98,7 +98,7 @@ func TestModel_MarkReviewedFromDiffPane(t *testing.T) {
 	m.file.name = "b.go"
 	m.layout.focus = paneDiff
 
-	// space from diff pane marks currFile
+	// m from diff pane marks currFile
 	result, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'m'}})
 	model := result.(Model)
 	assert.Equal(t, 1, model.tree.ReviewedCount(), "m in diff pane should mark currFile as reviewed")

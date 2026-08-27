@@ -140,7 +140,7 @@ func TestModelSingleRowRangeAndViewModeInvariant(t *testing.T) {
 	m.beginSelection(3)
 	ann, ok := m.annotationFromRows(annotation.ScopeRange, 3, 4)
 	require.True(t, ok)
-	assert.Equal(t, 0, ann.OldStart)
+	assert.Equal(t, 11, ann.OldStart)
 	assert.Equal(t, 0, ann.OldCount)
 	assert.Equal(t, 10, ann.NewStart)
 	assert.Equal(t, 1, ann.NewCount)
@@ -160,6 +160,53 @@ func TestModelSingleRowRangeAndViewModeInvariant(t *testing.T) {
 		assert.Contains(t, view, "\x1b[7m", "selected source row stays highlighted")
 		assert.Equal(t, plain, m.store.FormatOutput(), "rendering cannot affect structured output")
 	}
+}
+
+func TestModelScopedZeroCountCoordinatesUseUnifiedInsertionPoints(t *testing.T) {
+	m := newSelectionModel(t)
+
+	added, ok := m.annotationFromRows(annotation.ScopeRange, 6, 7)
+	require.True(t, ok)
+	assert.Equal(t, 12, added.OldStart)
+	assert.Zero(t, added.OldCount)
+	assert.Equal(t, 13, added.NewStart)
+	assert.Equal(t, 1, added.NewCount)
+
+	m.file.lines = []diff.DiffLine{
+		{OldNum: 20, NewNum: 20, Content: "before", ChangeType: diff.ChangeContext},
+		{OldNum: 21, Content: "gone", ChangeType: diff.ChangeRemove},
+		{OldNum: 22, NewNum: 21, Content: "after", ChangeType: diff.ChangeContext},
+	}
+	removed, ok := m.annotationFromRows(annotation.ScopeHunk, 1, 2)
+	require.True(t, ok)
+	assert.Equal(t, 21, removed.OldStart)
+	assert.Equal(t, 1, removed.OldCount)
+	assert.Equal(t, 20, removed.NewStart)
+	assert.Zero(t, removed.NewCount)
+}
+
+func TestModelScopedZeroCountCoordinatesUseParserAnchorsAcrossHiddenContext(t *testing.T) {
+	m := newSelectionModel(t)
+	m.file.lines = []diff.DiffLine{
+		{Content: "⋯ 49 lines ⋯", ChangeType: diff.ChangeDivider},
+		{NewNum: 51, OldAnchor: 50, Content: "inserted", ChangeType: diff.ChangeAdd},
+	}
+
+	added, ok := m.annotationFromRows(annotation.ScopeRange, 1, 2)
+	require.True(t, ok)
+	assert.Equal(t, 50, added.OldStart)
+	assert.Zero(t, added.OldCount)
+	assert.Equal(t, 51, added.NewStart)
+}
+
+func TestModelSelectionHighlightSurvivesInnerSGRResets(t *testing.T) {
+	m := newSelectionModel(t)
+	m.annot.selection = rangeSelection{active: true, anchor: 1, end: 1}
+	row := "left\x1b[0mmiddle\x1b[27mright\x1b[31mred"
+
+	got := m.selectionRow(row, 1)
+	assert.Equal(t, "\x1b[7mleft\x1b[0m\x1b[7mmiddle\x1b[27m\x1b[7mright\x1b[31m\x1b[7mred\x1b[27m", got)
+	assert.Equal(t, row, m.selectionRow(row, 0))
 }
 
 func TestModelScopedAnnotationsCoexistEditDeleteListAndNavigate(t *testing.T) {
@@ -210,6 +257,43 @@ func TestModelScopedAnnotationsCoexistEditDeleteListAndNavigate(t *testing.T) {
 	assert.NotContains(t, m.store.FormatOutput(), "(range)")
 }
 
+func TestModelAnnotationNavigationRecognizesScopedMarkerWithoutListTarget(t *testing.T) {
+	m := newSelectionModel(t)
+	rng, ok := m.annotationFromRows(annotation.ScopeRange, 3, 4)
+	require.True(t, ok)
+	rng.Comment = "range"
+	next := annotation.Annotation{File: m.file.name, Line: 13, Type: "+", Comment: "next"}
+	m.store.Add(rng)
+	m.store.Add(next)
+	m.nav.diffCursor = 3
+	m.annot.cursorOnAnnotation = true
+	m.annot.target = nil
+
+	result, _ := m.handleAnnotNav(true)
+	m = result.(Model)
+	assert.Equal(t, 6, m.nav.diffCursor)
+	require.NotNil(t, m.annot.target)
+	assert.True(t, sameAnnotationTarget(next, *m.annot.target))
+}
+
+func TestModelAnnotationCursorIgnoresStaleScopedTarget(t *testing.T) {
+	m := newSelectionModel(t)
+	stale, ok := m.annotationFromRows(annotation.ScopeRange, 1, 2)
+	require.True(t, ok)
+	stale.Comment = "stale range"
+	current := annotation.Annotation{File: m.file.name, Line: 13, Type: "+", Comment: "current line"}
+	m.store.Add(stale)
+	m.store.Add(current)
+	m.annot.target = &stale
+	m.nav.diffCursor = 6
+	m.annot.cursorOnAnnotation = true
+
+	m.startAnnotation()
+	require.NotNil(t, m.annot.target)
+	assert.True(t, sameAnnotationTarget(current, *m.annot.target))
+	assert.Equal(t, "current line", m.annot.input.Value())
+}
+
 func TestModelScopedEditorCompletionPreservesTarget(t *testing.T) {
 	m := newSelectionModel(t)
 	target, ok := m.annotationFromRows(annotation.ScopeRange, 1, 4)
@@ -221,6 +305,18 @@ func TestModelScopedEditorCompletionPreservesTarget(t *testing.T) {
 	assert.False(t, m.annot.annotating)
 	assert.Contains(t, m.store.FormatOutput(), "@@ -10,2 +10,1 @@ (range)")
 	assert.Contains(t, m.store.FormatOutput(), "\n\nfrom editor\n")
+}
+
+func TestModelFileRequestClearsSelectionBeforeAsyncLoad(t *testing.T) {
+	m := newSelectionModel(t)
+	m.beginSelection(1)
+	require.True(t, m.annot.selection.active)
+
+	cmd := m.requestFileDiff("other.go")
+	assert.NotNil(t, cmd)
+	assert.False(t, m.annot.selection.active)
+	assert.Equal(t, "other.go", m.file.requestedPath)
+	assert.NotContains(t, m.layout.viewport.View(), "\x1b[7m")
 }
 
 func TestModelFileLoadClearsSelection(t *testing.T) {

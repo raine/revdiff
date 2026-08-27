@@ -82,11 +82,23 @@ func (p *parser) flush() error {
 	if p.current == nil {
 		return nil
 	}
-	if n := len(p.body); n > 0 && p.body[n-1] == "" {
+	scoped := p.current.Scope == ScopeRange || p.current.Scope == ScopeHunk
+	maxInt := int(^uint(0) >> 1)
+	if scoped && p.current.OldCount > maxInt-p.current.NewCount {
+		return fmt.Errorf("malformed %s annotation counts for %q", p.current.Scope, p.current.File)
+	}
+	excerptCount := p.current.OldCount + p.current.NewCount
+	// A scoped record with an empty comment ends at its required blank excerpt
+	// separator. Preserve that row, while removing the extra blank record
+	// separator emitted between records and the legacy trailing separator.
+	if n := len(p.body); n > 0 && p.body[n-1] == "" && (!scoped || n > excerptCount+1) {
 		p.body = p.body[:n-1]
 	}
-	if p.current.Scope == ScopeRange || p.current.Scope == ScopeHunk {
-		excerptCount := p.current.OldCount + p.current.NewCount
+	if scoped {
+		if excerptCount == 0 || (p.current.OldCount > 0 && p.current.OldStart == 0) ||
+			(p.current.NewCount > 0 && p.current.NewStart == 0) {
+			return fmt.Errorf("malformed %s annotation coordinates for %q", p.current.Scope, p.current.File)
+		}
 		if len(p.body) < excerptCount+1 || p.body[excerptCount] != "" {
 			return fmt.Errorf("malformed %s annotation for %q: expected %d excerpt lines and a blank separator",
 				p.current.Scope, p.current.File, excerptCount)

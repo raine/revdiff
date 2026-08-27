@@ -81,6 +81,8 @@ func GitEnv() []string {
 type DiffLine struct {
 	OldNum        int        // line number in old version (0 for additions)
 	NewNum        int        // line number in new version (0 for removals)
+	OldAnchor     int        // exact old-side zero-count position for additions
+	NewAnchor     int        // exact new-side zero-count position for removals
 	Content       string     // line content without the +/- prefix; for ChangeDivider rows it is a human-readable "⋯ N line[s] ⋯" label — never pattern-match it, dispatch on ChangeType
 	ChangeType    ChangeType // changeAdd, ChangeRemove, ChangeContext, or ChangeDivider
 	IsBinary      bool       // true when this line is a binary file placeholder
@@ -939,6 +941,7 @@ func parseUnifiedDiff(raw string, totalOldLines int) ([]DiffLine, error) {
 	// skip diff header lines (---, +++, diff --git, index, etc.)
 	inHeader := true
 	var oldNum, newNum int
+	var oldAnchor, newAnchor int
 	// prevOldEnd = next untouched old-side line. Initialized to 1 so the first hunk's
 	// leading divider uses the same `oldStart - prevOldEnd` formula as between-hunks gaps.
 	prevOldEnd := 1
@@ -981,10 +984,13 @@ func parseUnifiedDiff(raw string, totalOldLines int) ([]DiffLine, error) {
 			if errOld != nil || errNew != nil {
 				return nil, fmt.Errorf("parse hunk header %q: old=%w new=%w", line, errOld, errNew)
 			}
-			// Atoi("") returns 0 with error; regex guarantees m[2] is digits when non-empty.
-			// Both the omitted-length case (git spec: implicit 1) and the literal `,0` (insertion-only)
-			// end up at oldLen=0 here, and max(oldLen,1) below resolves both to the same advance.
-			oldLen, _ := strconv.Atoi(m[2])
+			oldLen, newLen := 1, 1
+			if m[2] != "" {
+				oldLen, _ = strconv.Atoi(m[2])
+			}
+			if m[4] != "" {
+				newLen, _ = strconv.Atoi(m[4])
+			}
 
 			// emit divider representing unchanged lines BEFORE this hunk.
 			// Leading divider (first hunk) uses prevOldEnd=1 initialization; between-hunks use
@@ -999,6 +1005,14 @@ func parseUnifiedDiff(raw string, totalOldLines int) ([]DiffLine, error) {
 
 			oldNum = oldStart
 			newNum = newStart
+			oldAnchor = oldStart - 1
+			if oldLen == 0 {
+				oldAnchor = oldStart
+			}
+			newAnchor = newStart - 1
+			if newLen == 0 {
+				newAnchor = newStart
+			}
 			continue
 		}
 
@@ -1010,6 +1024,7 @@ func parseUnifiedDiff(raw string, totalOldLines int) ([]DiffLine, error) {
 		if line == "" {
 			// empty context line (happens for blank lines in source)
 			lines = append(lines, DiffLine{OldNum: oldNum, NewNum: newNum, Content: "", ChangeType: ChangeContext})
+			oldAnchor, newAnchor = oldNum, newNum
 			oldNum++
 			newNum++
 			continue
@@ -1020,18 +1035,22 @@ func parseUnifiedDiff(raw string, totalOldLines int) ([]DiffLine, error) {
 
 		switch prefix {
 		case '+':
-			lines = append(lines, DiffLine{OldNum: 0, NewNum: newNum, Content: content, ChangeType: ChangeAdd})
+			lines = append(lines, DiffLine{OldNum: 0, NewNum: newNum, OldAnchor: oldAnchor, Content: content, ChangeType: ChangeAdd})
+			newAnchor = newNum
 			newNum++
 		case '-':
-			lines = append(lines, DiffLine{OldNum: oldNum, NewNum: 0, Content: content, ChangeType: ChangeRemove})
+			lines = append(lines, DiffLine{OldNum: oldNum, NewNum: 0, NewAnchor: newAnchor, Content: content, ChangeType: ChangeRemove})
+			oldAnchor = oldNum
 			oldNum++
 		case ' ':
 			lines = append(lines, DiffLine{OldNum: oldNum, NewNum: newNum, Content: content, ChangeType: ChangeContext})
+			oldAnchor, newAnchor = oldNum, newNum
 			oldNum++
 			newNum++
 		default:
 			// unknown prefix, treat as context
 			lines = append(lines, DiffLine{OldNum: oldNum, NewNum: newNum, Content: line, ChangeType: ChangeContext})
+			oldAnchor, newAnchor = oldNum, newNum
 			oldNum++
 			newNum++
 		}

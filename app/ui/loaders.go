@@ -229,6 +229,14 @@ func (m Model) loadFileDiff(file string) tea.Cmd {
 // requestFileDiff records the selected target, advances the load sequence, and
 // returns a command for that exact request.
 func (m *Model) requestFileDiff(file string) tea.Cmd {
+	if m.annot.selection.active {
+		m.annot.selection = rangeSelection{}
+		m.invalidateRenderCaches()
+		m.layout.viewport.SetContent(m.renderDiff())
+	}
+	if !m.annot.annotating {
+		m.annot.target = nil
+	}
 	m.file.requestedPath = file
 	m.file.loadSeq++
 	return m.loadFileDiff(file)

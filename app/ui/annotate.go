@@ -83,8 +83,10 @@ func (m *Model) startAnnotation() tea.Cmd {
 		return nil
 	}
 	target := annotation.Annotation{File: m.file.name, Line: m.diffLineNum(dl), Type: string(dl.ChangeType)}
-	if m.annot.cursorOnAnnotation && m.annot.target != nil {
-		target = *m.annot.target
+	if m.annot.cursorOnAnnotation {
+		if stored, ok := m.annotationAtCursor(m.annot.target); ok {
+			target = stored
+		}
 	}
 	m.annot.target = &target
 	return m.startAnnotationInput(target)
@@ -130,6 +132,31 @@ func sameAnnotationTarget(a, b annotation.Annotation) bool {
 	}
 	return a.OldStart == b.OldStart && a.OldCount == b.OldCount &&
 		a.NewStart == b.NewStart && a.NewCount == b.NewCount
+}
+
+// annotationAtCursor resolves the exact record represented by the annotation
+// marker under the cursor. A target chosen from the annotation list retains
+// priority while it still matches; direct cursor navigation uses store order.
+func (m Model) annotationAtCursor(preferred *annotation.Annotation) (annotation.Annotation, bool) {
+	dl, ok := m.cursorDiffLine()
+	if !ok || dl.ChangeType == diff.ChangeDivider {
+		return annotation.Annotation{}, false
+	}
+	line, typ := m.diffLineNum(dl), string(dl.ChangeType)
+	annotations := m.store.Get(m.file.name)
+	if preferred != nil && preferred.File == m.file.name && preferred.Line == line && preferred.Type == typ {
+		for _, a := range annotations {
+			if sameAnnotationTarget(a, *preferred) {
+				return a, true
+			}
+		}
+	}
+	for _, a := range annotations {
+		if a.Line == line && a.Type == typ {
+			return a, true
+		}
+	}
+	return annotation.Annotation{}, false
 }
 
 // ensureLineAnnotationInputVisible scrolls the viewport so the line-annotation
@@ -351,9 +378,8 @@ func (m *Model) deleteAnnotation() tea.Cmd {
 
 	lineNum := m.diffLineNum(dl)
 	deleted := false
-	if m.annot.target != nil && m.annot.target.File == m.file.name &&
-		m.annot.target.Line == lineNum && m.annot.target.Type == string(dl.ChangeType) {
-		deleted = m.store.DeleteExact(*m.annot.target)
+	if target, ok := m.annotationAtCursor(m.annot.target); ok {
+		deleted = m.store.DeleteExact(target)
 	} else {
 		deleted = m.store.Delete(m.file.name, lineNum, string(dl.ChangeType))
 	}

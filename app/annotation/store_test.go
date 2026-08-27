@@ -168,13 +168,18 @@ func TestStore_AllEmpty(t *testing.T) {
 
 func TestStore_AllReturnsCopy(t *testing.T) {
 	s := NewStore()
-	s.Add(Annotation{File: "handler.go", Line: 43, Type: "+", Comment: "comment"})
+	excerpt := []ExcerptLine{{Type: "+", Content: "source"}}
+	s.Add(Annotation{File: "handler.go", Line: 43, Type: "+", Scope: ScopeRange,
+		NewStart: 43, NewCount: 1, Comment: "comment", Excerpt: excerpt})
+	excerpt[0].Content = "mutated caller slice"
 
 	all := s.All()
 	all["handler.go"][0].Comment = "modified"
+	all["handler.go"][0].Excerpt[0].Content = "modified excerpt"
 
 	original := s.All()
 	assert.Equal(t, "comment", original["handler.go"][0].Comment, "All should return a copy")
+	assert.Equal(t, "source", original["handler.go"][0].Excerpt[0].Content, "nested excerpt should return a copy")
 }
 
 func TestStore_Files(t *testing.T) {
@@ -420,6 +425,24 @@ func TestStore_FormatOutputScopedAnnotations(t *testing.T) {
 			assert.Equal(t, tc.ann, parsed[0])
 		})
 	}
+}
+
+func TestStore_ScopesUseDeterministicOrder(t *testing.T) {
+	s := NewStore()
+	base := Annotation{File: "a.go", Line: 2, Type: "+", NewStart: 2, NewCount: 1,
+		Excerpt: []ExcerptLine{{Type: "+", Content: "x"}}}
+	hunk := base
+	hunk.Scope, hunk.Comment = ScopeHunk, "hunk"
+	rng := base
+	rng.Scope, rng.Comment = ScopeRange, "range"
+	line := Annotation{File: "a.go", Line: 2, Type: "+", Comment: "line"}
+	s.Add(hunk)
+	s.Add(rng)
+	s.Add(line)
+
+	got := s.Get("a.go")
+	require.Len(t, got, 3)
+	assert.Equal(t, []Scope{ScopeLine, ScopeRange, ScopeHunk}, []Scope{got[0].Scope, got[1].Scope, got[2].Scope})
 }
 
 func TestStore_ScopeIdentityDoesNotOverwrite(t *testing.T) {

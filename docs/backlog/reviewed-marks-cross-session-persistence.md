@@ -5,7 +5,7 @@ added: 2026-08-20
 ---
 # reviewed marks do not survive the process
 
-Reviewed marks (`Space`) live only in `FileTree.reviewed` and are lost on exit, so `F` (unreviewed-only)
+Reviewed marks (`m`) live only in `FileTree.reviewed` and are lost on exit, so `F` (unreviewed-only)
 is useful within one session and worthless across two. Nothing else preserves them: `history.Save`
 returns early when there are no annotations (`app/history/history.go:43`), so a session that produced
 marks and no annotations writes nothing at all. Requested in #324, which asked for `--reviewed-output`

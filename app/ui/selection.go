@@ -1,6 +1,8 @@
 package ui
 
 import (
+	"regexp"
+
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/umputun/revdiff/app/annotation"
@@ -16,10 +18,16 @@ type rangeSelection struct {
 	dragAnchor int
 }
 
+var selectionSGRRe = regexp.MustCompile(`\x1b\[[0-9:;]*m`)
+
 func (m Model) selectionRow(row string, idx int) string {
 	if !m.selectionContains(idx) {
 		return row
 	}
+	// Inner line styling can emit resets that disable an outer reverse-video
+	// envelope. Re-enable reverse video after every SGR sequence so gutters,
+	// syntax colors, word-diff spans, and wrapped rows stay selected end to end.
+	row = selectionSGRRe.ReplaceAllString(row, "$0\x1b[7m")
 	return "\033[7m" + row + "\033[27m"
 }
 
@@ -161,11 +169,40 @@ func (m Model) annotationFromRows(scope annotation.Scope, start, end int) (annot
 			a.NewCount++
 		}
 	}
+	if oldStart == 0 {
+		oldStart = m.zeroCountStart(start, true)
+	}
+	if newStart == 0 {
+		newStart = m.zeroCountStart(start, false)
+	}
 	a.OldStart, a.NewStart = oldStart, newStart
 	first := m.file.lines[start]
 	a.Type = string(first.ChangeType)
 	a.Line = m.diffLineNum(first)
 	return a, true
+}
+
+// zeroCountStart returns the unified-diff insertion point for a side with no
+// selected rows. A zero-count range starts after the nearest preceding row on
+// that side, or at zero when the selection is at the beginning of the file.
+func (m Model) zeroCountStart(start int, oldSide bool) int {
+	anchor := m.file.lines[start].NewAnchor
+	if oldSide {
+		anchor = m.file.lines[start].OldAnchor
+	}
+	if anchor > 0 {
+		return anchor
+	}
+	for i := start - 1; i >= 0; i-- {
+		n := m.file.lines[i].NewNum
+		if oldSide {
+			n = m.file.lines[i].OldNum
+		}
+		if n > 0 {
+			return n
+		}
+	}
+	return 0
 }
 
 func (m *Model) extendSelectionForAction(action keymap.Action) bool {
