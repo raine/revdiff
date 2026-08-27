@@ -132,9 +132,12 @@ Examples piping a real diff:
 | `n/p` | Next/previous changed file; next/prev header in markdown TOC mode (n = next match when search active) |
 | `P` | Open the file picker |
 | `[` / `]` | Jump to previous/next change hunk in diff |
+| `Y` | Copy the current diff hunk to the terminal clipboard |
 | `e` | Open focused file in `$EDITOR` |
 
 The file picker lists paths currently visible in the sidebar, preserving annotated-only and unreviewed-only filters. Printable keys always filter full relative paths; use the arrow keys or mouse wheel to move, and press `Enter` or left-click to jump. `Backspace` edits the filter. The first `Esc` clears a non-empty filter and keeps the picker open; the second closes it. Because printable keys always filter, `P` typed inside the picker adds to the filter rather than closing it; a `jump_file` binding with a modifier (e.g. `map alt+f jump_file`) closes the picker when pressed again.
+
+Press `Y` on an added or removed line to copy the complete contiguous add/remove group under the cursor. The plain clipboard text contains the canonical relative path once, then every source line with its `+` or `-` prefix, and ends with a newline. The `copy_hunk` action reads the underlying diff, so compact, wrapped, collapsed, word-diff, syntax highlighting, and line-number views do not add ANSI escapes, gutters, annotations, or other UI decoration. Invalid rows and files still loading leave the clipboard unchanged and show a status hint. Delivery uses OSC 52 on the controlling terminal; the terminal must permit it and tmux requires clipboard integration. Content larger than 100,000 bytes fails, and terminals may impose a smaller limit.
 
 **Search:**
 

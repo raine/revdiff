@@ -9,7 +9,7 @@ import (
 	"github.com/umputun/revdiff/app/keymap"
 )
 
-// outputState holds transient feedback for annotation copy and output flush.
+// outputState holds transient feedback for clipboard actions and output flush.
 // hint is a status-bar message cleared on the next key press, mirroring
 // reloadState.hint.
 type outputState struct {
@@ -26,6 +26,9 @@ func (m Model) handleOutputAction(action keymap.Action) (tea.Model, tea.Cmd, boo
 	switch action {
 	case keymap.ActionCopyAnnotations:
 		return m.handleCopyAnnotations(), nil, true
+	case keymap.ActionCopyHunk:
+		model, cmd := m.handleCopyHunk()
+		return model, cmd, true
 	case keymap.ActionFlushOutput:
 		model, cmd := m.handleFlushOutput()
 		return model, cmd, true

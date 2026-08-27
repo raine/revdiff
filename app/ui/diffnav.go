@@ -306,8 +306,8 @@ func (m *Model) centerHunkInViewport() {
 	if m.nav.diffCursor < 0 || m.nav.diffCursor >= len(m.file.lines) {
 		return
 	}
-	ct := m.file.lines[m.nav.diffCursor].ChangeType
-	if ct != diff.ChangeAdd && ct != diff.ChangeRemove {
+	hunk, ok := m.hunkRangeAt(m.nav.diffCursor)
+	if !ok {
 		return
 	}
 
@@ -318,33 +318,24 @@ func (m *Model) centerHunkInViewport() {
 	}
 	annotationSet := m.buildAnnotationSet()
 
-	cursorY := m.cursorViewportYUsing(hunks, annotationSet)
-
-	// find hunk end: scan forward from cursor while lines are changed.
-	// hidden ChangeRemove lines (collapsed mode) are included in the range because
-	// hunkLineHeight returns 0 for them, so over-extending hunkEnd is harmless.
-	hunkEnd := m.nav.diffCursor
-	for i := m.nav.diffCursor + 1; i < len(m.file.lines); i++ {
-		ct := m.file.lines[i].ChangeType
-		if ct != diff.ChangeAdd && ct != diff.ChangeRemove {
-			break
-		}
-		hunkEnd = i
+	hunkStartY := m.cursorViewportYUsing(hunks, annotationSet)
+	for i := m.nav.diffCursor - 1; i >= hunk.start; i-- {
+		hunkStartY -= m.hunkLineHeight(i, hunks, annotationSet)
 	}
 
-	// calculate visual height of the hunk
+	// calculate visual height of the complete hunk
 	hunkVisualHeight := 0
-	for i := m.nav.diffCursor; i <= hunkEnd; i++ {
+	for i := hunk.start; i < hunk.end; i++ {
 		hunkVisualHeight += m.hunkLineHeight(i, hunks, annotationSet)
 	}
 
 	var offset int
 	if hunkVisualHeight >= m.layout.viewport.Height {
 		// hunk taller than viewport: place first line near top with small context margin
-		offset = max(0, cursorY-2)
+		offset = max(0, hunkStartY-2)
 	} else {
 		// center the entire hunk by centering its midpoint
-		hunkMidY := cursorY + hunkVisualHeight/2
+		hunkMidY := hunkStartY + hunkVisualHeight/2
 		offset = max(0, hunkMidY-m.layout.viewport.Height/2)
 	}
 	m.layout.viewport.SetYOffset(offset)
@@ -507,21 +498,55 @@ func (m *Model) jumpToLineN(n int) {
 	m.centerViewportOnCursor()
 }
 
-// findHunks scans diffLines and returns a slice of hunk start indices.
-// a hunk is a contiguous group of added/removed lines. the returned index
-// is the first line of each such group.
-func (m Model) findHunks() []int {
-	var hunks []int
-	inHunk := false
-	for i, dl := range m.file.lines {
-		isChange := dl.ChangeType == diff.ChangeAdd || dl.ChangeType == diff.ChangeRemove
-		switch {
-		case isChange && !inHunk:
-			hunks = append(hunks, i)
-			inHunk = true
-		case !isChange:
-			inHunk = false
+type hunkRange struct {
+	start int // inclusive index into file.lines
+	end   int // exclusive index into file.lines
+}
+
+// isHunkChange is the canonical row predicate for diff hunk boundaries.
+func isHunkChange(change diff.ChangeType) bool {
+	return change == diff.ChangeAdd || change == diff.ChangeRemove
+}
+
+// findHunkRanges returns every contiguous group of added and removed lines.
+func (m Model) findHunkRanges() []hunkRange {
+	var ranges []hunkRange
+	for i := 0; i < len(m.file.lines); {
+		if !isHunkChange(m.file.lines[i].ChangeType) {
+			i++
+			continue
 		}
+		start := i
+		for i < len(m.file.lines) && isHunkChange(m.file.lines[i].ChangeType) {
+			i++
+		}
+		ranges = append(ranges, hunkRange{start: start, end: i})
+	}
+	return ranges
+}
+
+// hunkRangeAt returns the complete hunk containing idx.
+func (m Model) hunkRangeAt(idx int) (hunkRange, bool) {
+	if idx < 0 || idx >= len(m.file.lines) || !isHunkChange(m.file.lines[idx].ChangeType) {
+		return hunkRange{}, false
+	}
+	for _, r := range m.findHunkRanges() {
+		if idx >= r.start && idx < r.end {
+			return r, true
+		}
+	}
+	return hunkRange{}, false
+}
+
+// findHunks returns the start index of each canonical hunk range.
+func (m Model) findHunks() []int {
+	ranges := m.findHunkRanges()
+	if len(ranges) == 0 {
+		return nil
+	}
+	hunks := make([]int, len(ranges))
+	for i, r := range ranges {
+		hunks[i] = r.start
 	}
 	return hunks
 }
@@ -530,25 +555,13 @@ func (m Model) findHunks() []int {
 // returns non-zero hunk index only when the cursor is on a changed line (add/remove).
 // returns (0, total) when cursor is not inside any hunk.
 func (m Model) currentHunk() (int, int) {
-	hunks := m.findHunks()
-	if len(hunks) == 0 {
-		return 0, 0
-	}
-	if m.nav.diffCursor < 0 || m.nav.diffCursor >= len(m.file.lines) {
-		return 0, len(hunks)
-	}
-	dl := m.file.lines[m.nav.diffCursor]
-	if dl.ChangeType != diff.ChangeAdd && dl.ChangeType != diff.ChangeRemove {
-		return 0, len(hunks)
-	}
-	// cursor is on a changed line, find which hunk
-	cur := 0
-	for i, start := range hunks {
-		if m.nav.diffCursor >= start {
-			cur = i + 1
+	ranges := m.findHunkRanges()
+	for i, r := range ranges {
+		if m.nav.diffCursor >= r.start && m.nav.diffCursor < r.end {
+			return i + 1, len(ranges)
 		}
 	}
-	return cur, len(hunks)
+	return 0, len(ranges)
 }
 
 // nearestHunkIndex returns the 0-based index of the change hunk starting at or

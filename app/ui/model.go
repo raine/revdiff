@@ -123,7 +123,7 @@ type commitLogSource interface {
 	CommitLog(ref string) ([]diff.CommitInfo, error)
 }
 
-// Clipboard copies annotation snapshots to the terminal clipboard.
+// Clipboard delivers plain text to the system or terminal clipboard.
 type Clipboard interface {
 	Copy(content string) error
 }
@@ -580,7 +580,7 @@ type Model struct {
 	keymap        *keymap.Keymap
 	themes        ThemeCatalog   // theme catalog for discovery, resolve, and persistence
 	editor        ExternalEditor // launches $EDITOR for annotation editing and source-file opening
-	clipboard     Clipboard      // copies canonical annotation snapshots through the terminal
+	clipboard     Clipboard      // terminal clipboard delivery
 	postFlushHook PostFlushHook  // optional command run after an in-session output flush
 
 	// grouped state
@@ -599,7 +599,7 @@ type Model struct {
 	reload      reloadState       // pending-confirmation state and applicability for R reload
 	compact     compactState      // applicability + transient hint for compact diff mode
 	editorState editorState       // transient hint state for source-file editor launches
-	output      outputState       // transient hint state for the O in-session output flush
+	output      outputState       // transient hint state for clipboard actions and output flush
 	keys        keyState          // chord-pending state and transient hint for leader-chord keybindings
 	vim         vimState          // count accumulator, pending letter leader, and transient hint for vim-motion preset
 	wheel       wheelState        // diff-pane mouse wheel coalescing (debounced render via wheelDebounceMsg)

@@ -24,6 +24,7 @@ Built for a specific use case: reviewing code changes, plans, and documents with
 - Two-pane TUI: file tree (left) + colorized diff viewport (right)
 - Vim-style `/` search within diff with `n`/`N` match navigation
 - Hunk navigation to jump between change groups
+- Direct hunk copying to the terminal clipboard with clean source text
 - Annotation list popup (`@`): browse all annotations across files, jump to any annotation
 - Filter file tree to show only annotated files
 - Status line with filename, diff stats, hunk position, line number, and mode indicators
@@ -750,9 +751,22 @@ In the Claude Code and Codex plugins, you can also tell the agent to use a past 
 | `n/p` | Next/previous changed file; next/prev header in markdown TOC mode (n = next match when search active) |
 | `P` | Open the file picker |
 | `[` / `]` | Jump to previous/next change hunk in diff; add `--cross-file-hunks` to continue into the previous/next file at the boundary |
+| `Y` | Copy the current diff hunk to the terminal clipboard |
 | `e` | Open focused file in `$EDITOR` |
 
 The file picker lists paths currently visible in the sidebar, so annotated-only and unreviewed-only filters remain active. Printable keys always filter full relative paths; use the arrow keys or mouse wheel to move, and press `Enter` or left-click to jump. `Backspace` edits the filter. The first `Esc` clears a non-empty filter and keeps the picker open; the second closes it. Because printable keys always filter, `P` typed inside the picker adds to the filter rather than closing it; a `jump_file` binding with a modifier (e.g. `map alt+f jump_file`) closes the picker when pressed again.
+
+Press `Y` on any added or removed line to copy the complete contiguous add/remove group under the cursor. The clipboard text contains the canonical relative path once, followed by each source line with its `+` or `-` prefix, and ends with a newline:
+
+```diff
+path/to/file.go
+-old value
++new value
+```
+
+The `copy_hunk` action reads the underlying diff, so compact, wrapped, collapsed, word-diff, syntax highlighting, and line-number views produce the same plain text without ANSI escapes, gutters, annotations, or other UI decoration. A context row, divider, placeholder, annotation sub-row, empty file, or file still loading leaves the clipboard unchanged and shows `Cursor is not on a diff hunk`.
+
+Clipboard delivery uses OSC 52 on the controlling terminal, including SSH sessions. The terminal must permit OSC 52. tmux requires `set-clipboard on` or `set-clipboard external`, and GNU screen requires passthrough support. Content larger than 100,000 bytes fails with `Copy failed`; terminals may impose a smaller clipboard limit.
 
 **Search:**
 
@@ -912,7 +926,7 @@ When the leader is pressed, the status bar shows `Pending: ctrl+w, esc to cancel
 
 **Navigation:** `down`, `up`, `page_down`, `page_up`, `half_page_down`, `half_page_up`, `home`, `end`, `scroll_left`, `scroll_right`, `scroll_center`, `scroll_top`, `scroll_bottom`, `scroll_diff_down`, `scroll_diff_up`
 
-**File/Hunk:** `next_item`, `prev_item`, `jump_file`, `next_hunk`, `prev_hunk`, `open_file_in_editor`
+**File/Hunk:** `next_item`, `prev_item`, `jump_file`, `next_hunk`, `prev_hunk`, `copy_hunk`, `open_file_in_editor`
 
 **Pane:** `toggle_pane`, `focus_tree`, `focus_diff`
 

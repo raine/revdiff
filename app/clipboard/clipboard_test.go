@@ -1,6 +1,7 @@
 package clipboard
 
 import (
+	"bytes"
 	"errors"
 	"io"
 	"strings"
@@ -14,13 +15,20 @@ type failingWriter struct{}
 
 func (failingWriter) Write([]byte) (int, error) { return 0, errors.New("tty unavailable") }
 
+type recordingTerminal struct {
+	bytes.Buffer
+	closeErr error
+}
+
+func (t *recordingTerminal) Close() error { return t.closeErr }
+
 func TestCopierCopy(t *testing.T) {
 	t.Setenv("TMUX", "")
 	var out strings.Builder
 	c := Copier{out: &out, term: "xterm-256color"}
 
-	require.NoError(t, c.Copy("hello"))
-	assert.Equal(t, "\x1b]52;c;aGVsbG8=\x07", out.String())
+	require.NoError(t, c.Copy("path.go\n+line\n"))
+	assert.Equal(t, "\x1b]52;c;cGF0aC5nbworbGluZQo=\x07", out.String())
 }
 
 func TestCopierCopyScreenPassthrough(t *testing.T) {
@@ -70,4 +78,16 @@ func TestCopierCopyReportsWriteFailure(t *testing.T) {
 	err := c.Copy("hello")
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "write OSC 52 clipboard sequence")
+}
+
+func TestCopierCopyReportsCloseFailure(t *testing.T) {
+	terminal := &recordingTerminal{closeErr: errors.New("close failed")}
+	c := Copier{
+		term:    "xterm-256color",
+		openTTY: func() (io.WriteCloser, error) { return terminal, nil },
+	}
+
+	err := c.Copy("hello")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "close controlling terminal for clipboard")
 }

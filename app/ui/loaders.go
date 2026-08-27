@@ -795,12 +795,12 @@ func (m *Model) recomputeIntraRanges() {
 
 	i := 0
 	for i < n {
-		if m.file.lines[i].ChangeType != diff.ChangeAdd && m.file.lines[i].ChangeType != diff.ChangeRemove {
+		if !isHunkChange(m.file.lines[i].ChangeType) {
 			i++
 			continue
 		}
 		blockStart := i
-		for i < n && (m.file.lines[i].ChangeType == diff.ChangeAdd || m.file.lines[i].ChangeType == diff.ChangeRemove) {
+		for i < n && isHunkChange(m.file.lines[i].ChangeType) {
 			i++
 		}
 

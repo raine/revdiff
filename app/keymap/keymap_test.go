@@ -32,7 +32,7 @@ func TestDefault_allExpectedBindings(t *testing.T) {
 		{"J", ActionScrollDiffDown}, {"K", ActionScrollDiffUp},
 		{"n", ActionNextItem}, {"N", ActionPrevItem}, {"p", ActionPrevItem},
 		{"P", ActionJumpFile},
-		{"]", ActionNextHunk}, {"[", ActionPrevHunk}, {"e", ActionOpenFileInEditor},
+		{"]", ActionNextHunk}, {"[", ActionPrevHunk}, {"Y", ActionCopyHunk}, {"e", ActionOpenFileInEditor},
 		{"tab", ActionTogglePane}, {"h", ActionFocusTree}, {"l", ActionFocusDiff},
 		{"/", ActionSearch},
 		{"a", ActionConfirm}, {"enter", ActionConfirm},
@@ -344,6 +344,39 @@ func TestActionOpenEditor_HelpEntry(t *testing.T) {
 		}
 	}
 	assert.True(t, found, "ActionOpenEditor should have a help entry")
+}
+
+func TestActionCopyHunkRegistrationHelpDumpAndCustomBinding(t *testing.T) {
+	assert.True(t, IsValidAction(ActionCopyHunk))
+
+	km := Default()
+	assert.Equal(t, ActionCopyHunk, km.Resolve("Y"))
+	assert.Equal(t, ActionCopyAnnotations, km.Resolve("y"))
+	assert.Equal(t, []string{"Y"}, km.KeysFor(ActionCopyHunk))
+
+	var found bool
+	for _, section := range km.HelpSections() {
+		for _, entry := range section.Entries {
+			if entry.Action == ActionCopyHunk {
+				assert.Equal(t, "File/Hunk", section.Name)
+				assert.Equal(t, "copy current diff hunk", entry.Description)
+				assert.Equal(t, "Y", entry.Keys)
+				found = true
+			}
+		}
+	}
+	assert.True(t, found, "copy_hunk should appear in File/Hunk help")
+
+	var dumped strings.Builder
+	require.NoError(t, km.Dump(&dumped))
+	assert.Contains(t, dumped.String(), "map Y copy_hunk")
+
+	path := t.TempDir() + "/keybindings"
+	require.NoError(t, os.WriteFile(path, []byte("unmap Y\nmap alt+y copy_hunk\n"), 0o600))
+	custom, err := Load(path)
+	require.NoError(t, err)
+	assert.Empty(t, custom.Resolve("Y"))
+	assert.Equal(t, ActionCopyHunk, custom.Resolve("alt+y"))
 }
 
 func TestActionOpenFileInEditor_IsValid(t *testing.T) {

@@ -38,17 +38,27 @@ func (c Copier) Copy(content string) error {
 	if strings.HasPrefix(c.term, "screen") && os.Getenv("TMUX") == "" {
 		seq = seq.Screen()
 	}
-	out := c.out
-	if out == nil {
-		tty, err := c.terminal()
-		if err != nil {
-			return fmt.Errorf("open controlling terminal for clipboard: %w", err)
-		}
-		defer tty.Close()
-		out = tty
+	encoded := seq.String()
+	if c.out != nil {
+		return c.write(c.out, encoded)
 	}
 
-	encoded := seq.String()
+	tty, err := c.terminal()
+	if err != nil {
+		return fmt.Errorf("open controlling terminal for clipboard: %w", err)
+	}
+	writeErr := c.write(tty, encoded)
+	closeErr := tty.Close()
+	if writeErr != nil {
+		return writeErr
+	}
+	if closeErr != nil {
+		return fmt.Errorf("close controlling terminal for clipboard: %w", closeErr)
+	}
+	return nil
+}
+
+func (c Copier) write(out io.Writer, encoded string) error {
 	n, err := io.WriteString(out, encoded)
 	if err != nil {
 		return fmt.Errorf("write OSC 52 clipboard sequence: %w", err)
@@ -63,9 +73,5 @@ func (c Copier) terminal() (io.WriteCloser, error) {
 	if c.openTTY != nil {
 		return c.openTTY()
 	}
-	tty, err := os.OpenFile("/dev/tty", os.O_WRONLY, 0)
-	if err != nil {
-		return nil, fmt.Errorf("open /dev/tty: %w", err)
-	}
-	return tty, nil
+	return openTerminal()
 }

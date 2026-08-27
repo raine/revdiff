@@ -39,6 +39,7 @@ const (
 	ActionJumpFile         Action = "jump_file"
 	ActionNextHunk         Action = "next_hunk"
 	ActionPrevHunk         Action = "prev_hunk"
+	ActionCopyHunk         Action = "copy_hunk"
 	ActionTogglePane       Action = "toggle_pane"
 	ActionFocusTree        Action = "focus_tree"
 	ActionFocusDiff        Action = "focus_diff"
@@ -85,7 +86,7 @@ var validActions = map[Action]bool{
 	ActionScrollCenter: true, ActionScrollTop: true, ActionScrollBottom: true,
 	ActionScrollDiffDown: true, ActionScrollDiffUp: true,
 	ActionNextItem: true, ActionPrevItem: true, ActionJumpFile: true,
-	ActionNextHunk: true, ActionPrevHunk: true,
+	ActionNextHunk: true, ActionPrevHunk: true, ActionCopyHunk: true,
 	ActionTogglePane: true, ActionFocusTree: true, ActionFocusDiff: true,
 	ActionSearch:  true,
 	ActionConfirm: true, ActionAnnotateFile: true, ActionDeleteAnnotation: true, ActionAnnotList: true,
@@ -210,6 +211,7 @@ func defaultDescriptions() []HelpEntry {
 		{ActionJumpFile, "jump to file", "File/Hunk"},
 		{ActionNextHunk, "next hunk", "File/Hunk"},
 		{ActionPrevHunk, "prev hunk", "File/Hunk"},
+		{ActionCopyHunk, "copy current diff hunk", "File/Hunk"},
 		{ActionOpenFileInEditor, "open focused file in $EDITOR", "File/Hunk"},
 
 		// pane
@@ -279,6 +281,7 @@ func defaultBindings() map[string]Action {
 		"P":      ActionJumpFile,
 		"]":      ActionNextHunk,
 		"[":      ActionPrevHunk,
+		"Y":      ActionCopyHunk,
 		"e":      ActionOpenFileInEditor,
 		"tab":    ActionTogglePane,
 		"h":      ActionFocusTree,

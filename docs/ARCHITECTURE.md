@@ -162,6 +162,8 @@ across files by concern to keep files under ~500 lines:
   target state, route completion, and refresh the current file after a clean source-editor exit
 - **`output.go`** — in-session annotation flush and optional post-flush command handoff through
   injected `PostFlushHook` + `tea.ExecProcess`
+- **`clipboard.go`** - plain-text current-hunk extraction and status feedback through the injected
+  `Clipboard` interface
 - **`themeselect.go`** — theme selector operations: open, preview, confirm, apply (via injected
   `ThemeCatalog`)
 - **`filepicker.go`** — file picker open and selected-path jump integration; delegates
@@ -469,7 +471,7 @@ main()  [main.go]
       → prepareStdinMode [stdin.go]  (if --stdin)
       → setupVCSRenderer [renderer_setup.go] (otherwise)
       → construct style, theme catalog adapter, all dependencies
-      → ui.NewModel(ModelConfig{...})
+      → ui.NewModel(ModelConfig{..., Clipboard: clipboard.New()})
       → tea.NewProgram(model, WithoutSignalHandler).Run()  [shutdownGuard owns SIGHUP/SIGTERM; SIGINT drained]
       → finalize()      [main.go] → saveHistory() on non-discarded, non-empty exit; -o output only on graceful (non-signal) exit
 ```
@@ -549,6 +551,7 @@ User presses 'a' on diff line
           otherwise      → saveComment(content, fileLevel, line, type)
   → re-render shows annotation (multi-line aware) below diff line
   → 'y' (copy_annotations): store.FormatOutput() → Clipboard.Copy(snapshot), revdiff stays open and store remains unchanged
+  → 'Y' (copy_hunk): canonical hunk range → relative path + prefixed source rows → Clipboard.Copy(content)
   → 'O' (flush_output, requires --output): store.WriteFile(path) → atomic write, revdiff stays open (annotate → flush → hand to agent → 'R' reload loop)
       → optional PostFlushHook.Prepare(snapshot) → tea.ExecProcess → command reads snapshot from stdin
   → on quit: store.FormatOutput() → structured output to stdout/file (file branch uses store.WriteFile)

@@ -398,27 +398,20 @@ func (m Model) diffLineNum(dl diff.DiffLine) int {
 	return dl.NewNum
 }
 
-// hunkEndLine returns the display line number of the last line in the change hunk
-// containing diffLines[idx]. only walks forward through lines of the same change type
-// as the starting line, so both start and end use the same number space (old or new).
-// returns 0 if idx is not inside a change hunk.
+// hunkEndLine returns the display line number of the last row with the
+// starting row's change type inside its canonical hunk. Selecting the same
+// type keeps annotation ranges in one source-file number space.
 func (m Model) hunkEndLine(idx int) int {
-	if idx < 0 || idx >= len(m.file.lines) {
+	r, ok := m.hunkRangeAt(idx)
+	if !ok {
 		return 0
 	}
-	dl := m.file.lines[idx]
-	if dl.ChangeType != diff.ChangeAdd && dl.ChangeType != diff.ChangeRemove {
-		return 0
-	}
-
-	// walk forward from idx to find the last contiguous line of the same change type
-	startType := dl.ChangeType
+	startType := m.file.lines[idx].ChangeType
 	last := idx
-	for i := idx + 1; i < len(m.file.lines); i++ {
-		if m.file.lines[i].ChangeType != startType {
-			break
+	for i := idx + 1; i < r.end; i++ {
+		if m.file.lines[i].ChangeType == startType {
+			last = i
 		}
-		last = i
 	}
 	return m.diffLineNum(m.file.lines[last])
 }

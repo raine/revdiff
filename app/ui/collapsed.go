@@ -206,7 +206,7 @@ func (m Model) deletePlaceholderText(hunkStart int) string {
 	count := 0
 	for i := hunkStart; i < len(m.file.lines); i++ {
 		ct := m.file.lines[i].ChangeType
-		if ct == diff.ChangeContext || ct == diff.ChangeDivider {
+		if !isHunkChange(ct) {
 			break
 		}
 		if ct == diff.ChangeRemove {
@@ -296,7 +296,7 @@ func (m Model) hunkStartFor(idx int, hunks []int) int {
 		return -1
 	}
 	dl := m.file.lines[idx]
-	if dl.ChangeType != diff.ChangeAdd && dl.ChangeType != diff.ChangeRemove {
+	if !isHunkChange(dl.ChangeType) {
 		return -1
 	}
 	best := -1
@@ -321,8 +321,7 @@ func (m Model) buildModifiedSet(hunks []int) map[int]bool {
 			end = hunks[hi+1]
 		}
 		// scan only contiguous change lines from start
-		for end > start && (m.file.lines[end-1].ChangeType != diff.ChangeAdd &&
-			m.file.lines[end-1].ChangeType != diff.ChangeRemove) {
+		for end > start && !isHunkChange(m.file.lines[end-1].ChangeType) {
 			end--
 		}
 
@@ -436,7 +435,7 @@ func (m Model) isDeleteOnlyPlaceholder(idx int, hunks []int) bool {
 func (m Model) isDeleteOnlyHunk(hunkStart int) bool {
 	for i := hunkStart; i < len(m.file.lines); i++ {
 		ct := m.file.lines[i].ChangeType
-		if ct == diff.ChangeContext || ct == diff.ChangeDivider {
+		if !isHunkChange(ct) {
 			break
 		}
 		if ct == diff.ChangeAdd {
@@ -454,7 +453,7 @@ func (m Model) firstVisibleInHunk(hunkStart int, hunks []int) int {
 		return hunkStart
 	}
 	for i := hunkStart + 1; i < len(m.file.lines); i++ {
-		if m.file.lines[i].ChangeType == diff.ChangeDivider || m.file.lines[i].ChangeType == diff.ChangeContext {
+		if !isHunkChange(m.file.lines[i].ChangeType) {
 			break // past the hunk boundary
 		}
 		if !m.isCollapsedHidden(i, hunks) {
