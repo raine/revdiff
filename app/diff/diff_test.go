@@ -413,6 +413,92 @@ func TestParseUnifiedDiff_RemoveLineNumbers(t *testing.T) {
 	}
 }
 
+func TestGit_CommitRangeIsolatesWorkingTree(t *testing.T) {
+	dir := setupTestRepo(t)
+	g := NewGit(dir)
+
+	writeFile(t, dir, "reviewed.txt", "root\n")
+	gitCmd(t, dir, "add", "reviewed.txt")
+	gitCmd(t, dir, "commit", "-m", "root")
+	writeFile(t, dir, "reviewed.txt", "committed\n")
+	gitCmd(t, dir, "add", "reviewed.txt")
+	gitCmd(t, dir, "commit", "-m", "reviewed")
+	writeFile(t, dir, "reviewed.txt", "dirty\n")
+	writeFile(t, dir, "staged.txt", "staged\n")
+	gitCmd(t, dir, "add", "staged.txt")
+	writeFile(t, dir, "untracked.txt", "untracked\n")
+
+	ref, err := g.CommitRange("HEAD")
+	require.NoError(t, err)
+	entries, err := g.ChangedFiles(ref, false)
+	require.NoError(t, err)
+	assert.Equal(t, []FileEntry{{Path: "reviewed.txt", Status: FileModified}}, entries)
+	lines, err := g.FileDiff(FileDiffRequest{Ref: ref, Path: "reviewed.txt"})
+	require.NoError(t, err)
+	added, removed := changeContents(lines)
+	assert.Equal(t, []string{"committed"}, added)
+	assert.Equal(t, []string{"root"}, removed)
+}
+
+func TestGit_CommitRangeSelectedRevisionAndRoot(t *testing.T) {
+	dir := setupTestRepo(t)
+	g := NewGit(dir)
+
+	writeFile(t, dir, "root.txt", "root\n")
+	gitCmd(t, dir, "add", "root.txt")
+	gitCmd(t, dir, "commit", "-m", "root")
+	rootRef, err := g.CommitRange("HEAD")
+	require.NoError(t, err)
+	rootEntries, err := g.ChangedFiles(rootRef, false)
+	require.NoError(t, err)
+	assert.Equal(t, []FileEntry{{Path: "root.txt", Status: FileAdded}}, rootEntries)
+	rootLog, err := g.CommitLog(rootRef)
+	require.NoError(t, err)
+	require.Len(t, rootLog, 1)
+	assert.Equal(t, "root", rootLog[0].Subject)
+
+	writeFile(t, dir, "second.txt", "second\n")
+	gitCmd(t, dir, "add", "second.txt")
+	gitCmd(t, dir, "commit", "-m", "second")
+	selectedRef, err := g.CommitRange("HEAD~1")
+	require.NoError(t, err)
+	selectedEntries, err := g.ChangedFiles(selectedRef, false)
+	require.NoError(t, err)
+	assert.Equal(t, []FileEntry{{Path: "root.txt", Status: FileAdded}}, selectedEntries)
+}
+
+func TestGit_CommitRangeMergeUsesFirstParent(t *testing.T) {
+	dir := setupTestRepo(t)
+	g := NewGit(dir)
+
+	writeFile(t, dir, "base.txt", "base\n")
+	gitCmd(t, dir, "add", "base.txt")
+	gitCmd(t, dir, "commit", "-m", "base")
+	gitCmd(t, dir, "branch", "mainline")
+	gitCmd(t, dir, "checkout", "-b", "side")
+	writeFile(t, dir, "side.txt", "side\n")
+	gitCmd(t, dir, "add", "side.txt")
+	gitCmd(t, dir, "commit", "-m", "side")
+	gitCmd(t, dir, "checkout", "mainline")
+	writeFile(t, dir, "main.txt", "main\n")
+	gitCmd(t, dir, "add", "main.txt")
+	gitCmd(t, dir, "commit", "-m", "main")
+	gitCmd(t, dir, "merge", "--no-ff", "side", "-m", "merge")
+
+	ref, err := g.CommitRange("HEAD")
+	require.NoError(t, err)
+	entries, err := g.ChangedFiles(ref, false)
+	require.NoError(t, err)
+	assert.Equal(t, []FileEntry{{Path: "side.txt", Status: FileAdded}}, entries)
+}
+
+func TestGit_CommitRangeInvalidRevision(t *testing.T) {
+	g := NewGit(setupTestRepo(t))
+	_, err := g.CommitRange("missing")
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), `resolve commit "missing"`)
+}
+
 func TestGit_ChangedFiles(t *testing.T) {
 	dir := setupTestRepo(t)
 	g := NewGit(dir)

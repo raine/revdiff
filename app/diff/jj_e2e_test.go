@@ -9,6 +9,62 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestJj_E2E_CommitRange(t *testing.T) {
+	if _, err := exec.LookPath("jj"); err != nil {
+		t.Skip("jj not available")
+	}
+
+	dir := setupJjRepo(t)
+	j := NewJj(dir)
+	writeFile(t, dir, "root.txt", "root\n")
+	jjCmd(t, dir, "describe", "-m", "root", "--quiet")
+	rootID := jjCommitID(t, dir, "@")
+	jjCmd(t, dir, "new", "--quiet")
+
+	rootRef, err := j.CommitRange(rootID)
+	require.NoError(t, err)
+	rootEntries, err := j.ChangedFiles(rootRef, false)
+	require.NoError(t, err)
+	assert.Equal(t, []FileEntry{{Path: "root.txt", Status: FileAdded}}, rootEntries)
+
+	writeFile(t, dir, "second.txt", "committed\n")
+	jjCmd(t, dir, "describe", "-m", "second", "--quiet")
+	jjCmd(t, dir, "new", "--quiet")
+	writeFile(t, dir, "second.txt", "dirty\n")
+	writeFile(t, dir, "untracked.txt", "untracked\n")
+
+	ref, err := j.CommitRange("HEAD")
+	require.NoError(t, err)
+	entries, err := j.ChangedFiles(ref, false)
+	require.NoError(t, err)
+	assert.Equal(t, []FileEntry{{Path: "second.txt", Status: FileAdded}}, entries)
+}
+
+func TestJj_E2E_CommitRangeMergeUsesFirstParent(t *testing.T) {
+	if _, err := exec.LookPath("jj"); err != nil {
+		t.Skip("jj not available")
+	}
+
+	dir := setupJjRepo(t)
+	j := NewJj(dir)
+	writeFile(t, dir, "base.txt", "base\n")
+	jjCmd(t, dir, "describe", "-m", "base", "--quiet")
+	baseID := jjCommitID(t, dir, "@")
+	jjCmd(t, dir, "new", baseID, "-m", "side", "--quiet")
+	writeFile(t, dir, "side.txt", "side\n")
+	sideID := jjCommitID(t, dir, "@")
+	jjCmd(t, dir, "new", baseID, "-m", "main", "--quiet")
+	writeFile(t, dir, "main.txt", "main\n")
+	jjCmd(t, dir, "new", "@", sideID, "-m", "merge", "--quiet")
+	jjCmd(t, dir, "new", "--quiet")
+
+	ref, err := j.CommitRange("HEAD")
+	require.NoError(t, err)
+	entries, err := j.ChangedFiles(ref, false)
+	require.NoError(t, err)
+	assert.Equal(t, []FileEntry{{Path: "side.txt", Status: FileAdded}}, entries)
+}
+
 // TestJj_E2E_CommitLog exercises (*Jj).CommitLog against a real jj binary, covering
 // single-ref and range revset translations plus round-trip of commit_id, author,
 // date, subject, and body.

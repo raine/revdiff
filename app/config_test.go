@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/jessevdk/go-flags"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -745,6 +746,62 @@ func TestParseArgs_NoRef(t *testing.T) {
 	assert.Empty(t, opts.ref())
 }
 
+func TestParseArgs_Commit(t *testing.T) {
+	tests := []struct {
+		name string
+		arg  string
+		want string
+	}{
+		{name: "HEAD default", arg: "--commit", want: "HEAD"},
+		{name: "selected revision", arg: "--commit=release", want: "release"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			opts, err := parseArgs(append(noConfigArgs(t), tt.arg))
+			require.NoError(t, err)
+			assert.True(t, opts.Commit.set)
+			assert.Equal(t, tt.want, opts.Commit.target)
+			assert.Empty(t, opts.ref(), "commit range is resolved after VCS detection")
+		})
+	}
+}
+
+func TestParseArgs_CommitConflicts(t *testing.T) {
+	tests := []struct {
+		name string
+		args []string
+		want string
+	}{
+		{name: "single ref", args: []string{"--commit", "HEAD"}, want: "--commit cannot be used with refs"},
+		{name: "two refs", args: []string{"--commit", "main", "feature"}, want: "--commit cannot be used with refs"},
+		{name: "staged", args: []string{"--commit", "--staged"}, want: "--commit cannot be used with --staged"},
+		{name: "all files", args: []string{"--commit", "--all-files"}, want: "--commit cannot be used with --all-files"},
+		{name: "stdin", args: []string{"--commit", "--stdin"}, want: "--commit cannot be used with --stdin"},
+		{name: "compare", args: []string{"--commit", "--compare-old=a", "--compare-new=b"}, want: "--commit cannot be used with --compare-old/--compare-new"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := parseArgs(append(noConfigArgs(t), tt.args...))
+			require.EqualError(t, err, tt.want)
+		})
+	}
+}
+
+func TestCommitOptionRejectsEmptyRevision(t *testing.T) {
+	_, err := parseArgs(append(noConfigArgs(t), "--commit="))
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "commit revision cannot be empty")
+}
+
+func TestCommitHelp(t *testing.T) {
+	var opts options
+	parser := flags.NewParser(&opts, flags.Default)
+	var buf bytes.Buffer
+	parser.WriteHelp(&buf)
+	assert.Contains(t, buf.String(), "--commit=[REVISION]")
+	assert.Contains(t, buf.String(), "show changes introduced by one commit")
+}
+
 func TestParseArgs_StagedWithTwoRefs(t *testing.T) {
 	_, err := parseArgs(append(noConfigArgs(t), "--staged", "main", "feature"))
 	require.Error(t, err)
@@ -953,6 +1010,7 @@ func TestDumpConfig(t *testing.T) {
 	assert.Contains(t, output, "no-mouse = false")
 	assert.Contains(t, output, "wrap-indent = 0")
 	assert.Contains(t, output, "post-flush-command =")
+	assert.NotContains(t, output, "commit =", "--commit is CLI-only")
 	assert.Contains(t, output, "[color options]")
 	assert.Contains(t, output, "color-accent = #D5895F")
 	assert.NotContains(t, output, "\ncolors =", "should not have spurious colors= line")

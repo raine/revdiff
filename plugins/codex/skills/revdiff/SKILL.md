@@ -27,7 +27,7 @@ Use `$SCRIPT_DIR` in place of script paths throughout this skill.
 ## Activation Triggers
 
 - "revdiff", "review diff", "review changes", "annotate diff"
-- "revdiff HEAD~1", "revdiff main"
+- "revdiff --commit", "revdiff main"
 - "hg review with revdiff", "review jj change"
 - "revdiff all files", "review all files", "browse all files"
 - "revdiff all files exclude vendor"
@@ -119,7 +119,9 @@ The script outputs structured fields:
 - `use_staged` — if `true`, pass `--staged` to the launcher (staged-only changes detected)
 - `needs_ask` — if `true`, ask the user before proceeding
 
-**When `use_staged: true`**, pass `--staged` to the launcher. This means all changes are in the index (staged) with nothing unstaged — without `--staged`, revdiff would show an empty diff.
+**When `use_staged: true`**, pass `--staged` to the launcher. This means all changes are in the index (staged) with nothing unstaged - without `--staged`, revdiff would show an empty diff.
+
+**When the user asks to review one commit**, pass `--commit` for `HEAD` or `--commit=REVISION` for another commit. This isolates the review from staged, unstaged, and untracked work. Do not combine it with positional refs or another input mode.
 
 **When `needs_ask: true`** (on a feature branch with uncommitted changes), present the user with options as a numbered list and wait for their response:
 
@@ -143,7 +145,7 @@ Pass `--start-at-change` only when the user explicitly asks for that cursor pref
 Run the launcher script:
 
 ```bash
-$SCRIPT_DIR/launch-revdiff.sh [base] [against] [--staged] [--untracked] [--only=file1] [--all-files] [--exclude=prefix] [--description=text|--description-file=path]
+$SCRIPT_DIR/launch-revdiff.sh [base] [against] [--commit[=REVISION]] [--staged] [--untracked] [--only=file1] [--all-files] [--exclude=prefix] [--description=text|--description-file=path]
 ```
 
 **IMPORTANT — long-running command**: The launcher blocks until the user finishes reviewing in the TUI overlay, which can exceed the default bash tool timeout. Set the bash timeout parameter to the **maximum your harness allows** (e.g. 1800000 or higher). Do NOT use `run_in_background` for this — background-task handling is unreliable for interactive TUI launchers. If the review outlasts the timeout cap, the fallback in Step 3 handles it.
@@ -265,15 +267,15 @@ When the script produces no output, the review is complete. Inform the user.
 ## Example Sessions
 
 ```
-User: "revdiff HEAD~1"
-→ launch revdiff in tmux popup with HEAD~1 diff
+User: "revdiff --commit"
+→ launch revdiff in tmux popup with the isolated HEAD commit diff
 → user annotates: "handler.go:43 - use errors.Is()"
 → user quits
 → annotations captured
 → plan changes: "add errors.Is() check at handler.go:43"
 → user approves
 → fix applied
-→ re-launch revdiff HEAD~1
+→ re-launch revdiff --commit
 → user sees fix, quits without annotations
 → "review complete"
 ```

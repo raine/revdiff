@@ -18,7 +18,7 @@ Reference resolution rules:
 
 - Accept natural language. Resolve the user's requested target to concrete revdiff args before launching.
 - If the request identifies another working directory (for example `in ~/source/repo`), use that directory for any git/ref/path resolution, omit that directory phrase from the revdiff args, and pass the directory as the `revdiff_review` tool's `cwd` parameter.
-- For commit-count requests, use the matching git rev: `prev commit`, `previous commit`, `last commit` → `HEAD~1`; `head-3`, `head 3`, `HEAD~3`, `previous 3 commits`, `last 3 commits` → `HEAD~3`.
+- For one-commit requests, use `--commit` for `HEAD` or `--commit=REVISION` for another commit. This isolates the review from working-tree changes. For multi-commit requests, use the matching ref: `head-3`, `head 3`, `HEAD~3`, `previous 3 commits`, `last 3 commits` -> `HEAD~3`.
 - For tag requests, resolve the actual tag first. `last tag` or `latest tag` → run `git describe --tags --abbrev=0`, then pass that tag as `args`.
 - For date requests, resolve the commit first. Examples: `2 weeks ago`, `yesterday`, `last Friday` → run `git rev-list -1 --before=<phrase> HEAD`, then pass the resulting commit hash as `args`.
 - For file targets, use `args: "--only <path>"`.
@@ -31,6 +31,8 @@ Tool examples:
 - No args: smart detection, same default target as `/revdiff`
 - `args: "main"`: review the current branch against `main`
 - `args: "--staged"`: review staged changes
+- `args: "--commit"`: review exactly the changes introduced by `HEAD`
+- `args: "--commit=v1.2.3"`: review exactly the changes introduced by another commit
 - `args: "--untracked"`: review untracked files with working-tree changes
 - `args: "--only README.md"`: review one standalone file
 - `args: "--all-files --exclude vendor"`: review all tracked files except vendor
@@ -71,7 +73,8 @@ When annotations arrive from `/revdiff` or `revdiff_review`:
 
 ```text
 /revdiff
-/revdiff HEAD~1
+/revdiff --commit
+/revdiff --commit=v1.2.3
 /revdiff main
 /revdiff --staged
 /revdiff --untracked
@@ -108,7 +111,7 @@ Behavior:
   - on a dirty feature branch → asks whether to review uncommitted changes or the branch diff; staged-only uncommitted review uses `--staged`
 - After revdiff exits with annotations, `revdiff_review` returns them in the tool result; the agent processes that result directly.
 - If revdiff exits without captured annotations, report that no annotations were captured and stop.
-- When recent agent work created new untracked files, include `--untracked` so those files appear in the review tree.
+- When recent agent work created new untracked files, include `--untracked` so those files appear in a working-tree review. Use `--commit` for one-commit reviews because it excludes working-tree state.
 - When launching after analysis or refactor work, include `--description` or `--description-file` so the info popup explains the review context.
 
 ## Existing review history

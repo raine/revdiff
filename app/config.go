@@ -11,13 +11,30 @@ import (
 	"github.com/jessevdk/go-flags"
 )
 
+type commitOption struct {
+	target string
+	set    bool
+}
+
+func (c *commitOption) UnmarshalFlag(value string) error {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return errors.New("commit revision cannot be empty")
+	}
+	c.target = value
+	c.set = true
+	return nil
+}
+
 type options struct {
 	Refs struct {
 		Base    string `positional-arg-name:"base" description:"git ref to diff against (default: uncommitted changes)"`
 		Against string `positional-arg-name:"against" description:"second git ref for two-ref diff (e.g. revdiff main feature)"`
 	} `positional-args:"yes"`
 
-	Staged                bool     `long:"staged" ini-name:"staged" env:"REVDIFF_STAGED" description:"show staged changes"`
+	Staged bool         `long:"staged" ini-name:"staged" env:"REVDIFF_STAGED" description:"show staged changes"`
+	Commit commitOption `long:"commit" no-ini:"true" optional:"true" optional-value:"HEAD" value-name:"[REVISION]" description:"show changes introduced by one commit"`
+
 	Untracked             bool     `long:"untracked" ini-name:"untracked" env:"REVDIFF_UNTRACKED" description:"show untracked files in the tree"`
 	TreeWidth             int      `long:"tree-width" ini-name:"tree-width" env:"REVDIFF_TREE_WIDTH" default:"2" description:"file tree panel width in units (1-10, default 2 of 10)"`
 	TabWidth              int      `long:"tab-width" ini-name:"tab-width" env:"REVDIFF_TAB_WIDTH" default:"4" description:"number of spaces per tab character"`
@@ -98,11 +115,15 @@ type options struct {
 
 	compareAbsOld string
 	compareAbsNew string
+	resolvedRef   string
 }
 
-// ref returns the combined ref string from positional args.
-// two refs are joined with ".." to form a range (e.g. "main..feature").
+// ref returns the resolved session ref. A one-commit range takes precedence;
+// two positional refs are joined with ".." (e.g. "main..feature").
 func (o options) ref() string {
+	if o.resolvedRef != "" {
+		return o.resolvedRef
+	}
 	if o.Refs.Against != "" {
 		return o.Refs.Base + ".." + o.Refs.Against
 	}
@@ -139,6 +160,10 @@ func parseArgs(args []string) (options, error) {
 
 	if _, err := p.ParseArgs(args); err != nil {
 		return options{}, fmt.Errorf("parse args: %w", err)
+	}
+
+	if err := validateCommitOption(opts); err != nil {
+		return options{}, err
 	}
 
 	if opts.Staged && (opts.Refs.Against != "" || strings.Contains(opts.Refs.Base, "..")) {
@@ -186,6 +211,28 @@ func parseArgs(args []string) (options, error) {
 	opts.compareAbsNew = absNew
 
 	return opts, nil
+}
+
+func validateCommitOption(opts options) error {
+	if !opts.Commit.set {
+		return nil
+	}
+	conflicts := []struct {
+		bad  bool
+		mode string
+	}{
+		{opts.Refs.Base != "" || opts.Refs.Against != "", "refs"},
+		{opts.Staged, "--staged"},
+		{opts.AllFiles, "--all-files"},
+		{opts.Stdin, "--stdin"},
+		{opts.CompareOld != "" || opts.CompareNew != "", "--compare-old/--compare-new"},
+	}
+	for _, conflict := range conflicts {
+		if conflict.bad {
+			return fmt.Errorf("--commit cannot be used with %s", conflict.mode)
+		}
+	}
+	return nil
 }
 
 // dumpConfig writes the current config with defaults to the given writer.

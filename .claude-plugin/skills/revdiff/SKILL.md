@@ -12,7 +12,7 @@ Review diffs with inline annotations using revdiff TUI in a terminal overlay. Wo
 ## Activation Triggers
 
 - "revdiff", "review diff", "review changes", "annotate diff"
-- "revdiff HEAD~1", "revdiff main"
+- "revdiff --commit", "revdiff main"
 - "hg review with revdiff", "review jj change"
 - "revdiff all files", "review all files", "browse all files"
 - "revdiff all files exclude vendor"
@@ -104,7 +104,9 @@ The script outputs structured fields:
 - `use_staged` — if `true`, pass `--staged` to the launcher (staged-only changes detected)
 - `needs_ask` — if `true`, ask the user before proceeding
 
-**When `use_staged: true`**, pass `--staged` to the launcher. This means all changes are in the index (staged) with nothing unstaged — without `--staged`, revdiff would show an empty diff.
+**When `use_staged: true`**, pass `--staged` to the launcher. This means all changes are in the index (staged) with nothing unstaged - without `--staged`, revdiff would show an empty diff.
+
+**When the user asks to review one commit**, pass `--commit` for `HEAD` or `--commit=REVISION` for another commit. This isolates the review from staged, unstaged, and untracked work. Do not combine it with positional refs or another input mode.
 
 **When `needs_ask: true`** (on a feature branch with uncommitted changes), use AskUserQuestion:
 - **"Uncommitted only"** — pass no ref (review just working changes)
@@ -127,7 +129,7 @@ Pass `--start-at-change` only when the user explicitly asks for that cursor pref
 Run the launcher through the override-chain resolver:
 
 ```bash
-"$("${CLAUDE_SKILL_DIR}/scripts/resolve-launcher.sh" launch-revdiff.sh "${CLAUDE_PLUGIN_DATA}")" [base] [against] [--staged] [--untracked] [--only=file1] [--all-files] [--exclude=prefix] [--description=text|--description-file=path]
+"$("${CLAUDE_SKILL_DIR}/scripts/resolve-launcher.sh" launch-revdiff.sh "${CLAUDE_PLUGIN_DATA}")" [base] [against] [--commit[=REVISION]] [--staged] [--untracked] [--only=file1] [--all-files] [--exclude=prefix] [--description=text|--description-file=path]
 ```
 
 The resolver and launcher MUST run in the same bash invocation — the resolver runs as a sub-shell substitution so the resolved path is consumed immediately as the executable. The resolver checks `user → bundled` (see `references/install.md` for override paths) and prints the first-found absolute path. Fall-through to the bundled launcher is the default when no overrides exist.
@@ -234,15 +236,15 @@ When the script produces no output, the review is complete. Inform the user.
 ## Example Sessions
 
 ```
-User: "revdiff HEAD~1"
-→ launch revdiff in tmux popup with HEAD~1 diff
+User: "revdiff --commit"
+→ launch revdiff in tmux popup with the isolated HEAD commit diff
 → user annotates: "handler.go:43 - use errors.Is()"
 → user quits
 → annotations captured
 → enter plan mode: "add errors.Is() check at handler.go:43"
 → user approves
 → fix applied
-→ re-launch revdiff HEAD~1
+→ re-launch revdiff --commit
 → user sees fix, quits without annotations
 → "review complete"
 ```

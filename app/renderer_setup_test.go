@@ -13,6 +13,42 @@ import (
 	"github.com/umputun/revdiff/app/ui/mocks"
 )
 
+type commitRangeResolverStub struct {
+	ref string
+	err error
+}
+
+func (r commitRangeResolverStub) CommitRange(string) (string, error) {
+	return r.ref, r.err
+}
+
+func TestResolveCommitRef(t *testing.T) {
+	t.Run("ordinary mode", func(t *testing.T) {
+		got, err := resolveCommitRef(options{}, commitRangeResolverStub{err: errors.New("must not run")})
+		require.NoError(t, err)
+		assert.Empty(t, got)
+	})
+
+	t.Run("commit mode", func(t *testing.T) {
+		opts := options{Commit: commitOption{target: "HEAD", set: true}}
+		got, err := resolveCommitRef(opts, commitRangeResolverStub{ref: "parent..commit"})
+		require.NoError(t, err)
+		assert.Equal(t, "parent..commit", got)
+	})
+
+	t.Run("resolver error", func(t *testing.T) {
+		opts := options{Commit: commitOption{target: "bad", set: true}}
+		_, err := resolveCommitRef(opts, commitRangeResolverStub{err: errors.New("bad revision")})
+		require.EqualError(t, err, "resolve --commit: bad revision")
+	})
+}
+
+func TestOptionsRefPrefersResolvedCommitRange(t *testing.T) {
+	opts := options{resolvedRef: "parent..commit"}
+	opts.Refs.Base = "ignored"
+	assert.Equal(t, "parent..commit", opts.ref())
+}
+
 func TestMakeGitRenderer_WithOnly(t *testing.T) {
 	dir := t.TempDir()
 	g := diff.NewGit(dir)
@@ -21,6 +57,15 @@ func TestMakeGitRenderer_WithOnly(t *testing.T) {
 	require.NotNil(t, renderer)
 	assert.IsType(t, &diff.FallbackRenderer{}, renderer)
 	assert.Equal(t, dir, workDir)
+}
+
+func TestMakeGitRenderer_CommitOnlyDoesNotReadWorkingTreeFallback(t *testing.T) {
+	dir := t.TempDir()
+	g := diff.NewGit(dir)
+	opts := options{Only: []string{"file.md"}, Commit: commitOption{target: "HEAD", set: true}}
+	renderer, _, err := makeGitRenderer(g, opts, dir)
+	require.NoError(t, err)
+	assert.Same(t, g, renderer)
 }
 
 func TestMakeGitRenderer_WithoutOnly(t *testing.T) {
@@ -42,6 +87,13 @@ func TestMakeNoVCSRenderer_WithOnly(t *testing.T) {
 	require.NotNil(t, renderer)
 	assert.IsType(t, &diff.FileReader{}, renderer)
 	assert.Equal(t, tmpDir, workDir)
+}
+
+func TestSetupVCSRenderer_CommitRequiresRepository(t *testing.T) {
+	t.Chdir(t.TempDir())
+	opts := options{Commit: commitOption{target: "HEAD", set: true}}
+	_, err := setupVCSRenderer(opts)
+	require.EqualError(t, err, "--commit requires a git, mercurial, or jujutsu repository")
 }
 
 func TestMakeNoVCSRenderer_NoOnly(t *testing.T) {
@@ -301,6 +353,9 @@ func TestGitHgJj_ImplementCommitLogger(t *testing.T) {
 	assert.Implements(t, (*diff.CommitLogger)(nil), diff.NewGit(t.TempDir()))
 	assert.Implements(t, (*diff.CommitLogger)(nil), diff.NewHg(t.TempDir()))
 	assert.Implements(t, (*diff.CommitLogger)(nil), diff.NewJj(t.TempDir()))
+	assert.Implements(t, (*commitRangeResolver)(nil), diff.NewGit(t.TempDir()))
+	assert.Implements(t, (*commitRangeResolver)(nil), diff.NewHg(t.TempDir()))
+	assert.Implements(t, (*commitRangeResolver)(nil), diff.NewJj(t.TempDir()))
 }
 
 func TestReloadApplicable(t *testing.T) {

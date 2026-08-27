@@ -11,7 +11,8 @@ revdiff              # review uncommitted changes
 revdiff main         # review changes against a branch
 revdiff --staged     # review staged changes
 revdiff --untracked  # show untracked files in the tree
-revdiff HEAD~1       # review last commit
+revdiff --commit     # review HEAD without working-tree changes
+revdiff --commit=v1.2.3 # review another commit
 revdiff main feature # diff between two refs
 revdiff main..feature  # same as above, git dot-dot syntax
 revdiff main...feature # changes since feature diverged from main
@@ -28,6 +29,8 @@ revdiff --compare-old=/tmp/plan-old.md --compare-new=docs/plans/plan.md  # diff 
 printf '# Plan\n\nBody\n' | revdiff --stdin --stdin-name plan.md  # review piped text as markdown
 some-command | revdiff --stdin --output /tmp/annotations.txt      # annotate generated output
 ```
+
+`--commit` compares one commit with its first parent, or with the VCS root tree for a root commit. It works in Git, Mercurial, and Jujutsu repositories. Positional refs keep their existing meanings. `--commit` cannot be combined with positional refs, `--staged`, `--all-files`, `--stdin`, or `--compare-old`/`--compare-new`.
 
 ## Single-File Mode
 

@@ -128,7 +128,7 @@ Priority: agterm → tmux → Zellij → herdr → kitty → wezterm/Kaku → cm
 
 ```
 /revdiff                  -- smart detection: uncommitted, last commit, or branch diff
-/revdiff HEAD~1           -- review last commit
+/revdiff --commit         -- review last commit
 /revdiff main             -- review current branch against main
 /revdiff --staged         -- review staged changes only
 /revdiff HEAD~3           -- review last 3 commits
@@ -138,7 +138,7 @@ Priority: agterm → tmux → Zellij → herdr → kitty → wezterm/Kaku → cm
 
 ```
 "review diff"                     -- smart detection, same as /revdiff
-"review diff HEAD~1"              -- last commit
+"review the last commit"          -- last commit
 "review diff against main"        -- branch diff
 "review changes from last 2 days" -- Claude resolves the ref automatically
 "revdiff for staged changes"      -- staged only
@@ -218,7 +218,7 @@ Useful args:
 
 ```text
 /revdiff                         -- detect uncommitted, staged, or branch changes, then open revdiff
-/revdiff HEAD~1                  -- review last commit
+/revdiff --commit                -- review last commit
 /revdiff main                    -- review against main
 /revdiff --staged                -- review staged changes
 /revdiff --untracked             -- include untracked files in working-tree review
@@ -355,11 +355,13 @@ revdiff [OPTIONS] [base] [against]
 ```
 
 Positional arguments support several forms:
-- `revdiff` — uncommitted changes
-- `revdiff HEAD~3` — diff a single ref against the working tree
-- `revdiff main feature` — diff between two refs
-- `revdiff main..feature` — same as above, using git's dot-dot syntax
-- `revdiff main...feature` — changes since `feature` diverged from `main`
+- `revdiff` - uncommitted changes
+- `revdiff HEAD~3` - diff a single ref against the working tree
+- `revdiff main feature` - diff between two refs
+- `revdiff main..feature` - same as above, using git's dot-dot syntax
+- `revdiff main...feature` - changes since `feature` diverged from `main`
+
+Use `revdiff --commit` to review exactly the changes introduced by `HEAD`, independent of staged, unstaged, and untracked work. Use `revdiff --commit=REVISION` for another commit. A merge commit is compared with its first parent. A root commit is compared with the empty tree in Git, Mercurial's null revision, or Jujutsu's synthetic root commit. `--commit` works in Git, Mercurial, and Jujutsu repositories and cannot be combined with positional refs, `--staged`, `--all-files`, `--stdin`, or `--compare-old`/`--compare-new`.
 
 ### Options
 
@@ -368,6 +370,7 @@ Positional arguments support several forms:
 | `base` | Git ref to diff against | uncommitted changes |
 | `against` | Second git ref for two-ref diff | |
 | `--staged` | Show staged changes, env: `REVDIFF_STAGED` | `false` |
+| `--commit[=REVISION]` | Show changes introduced by one commit | `HEAD` |
 | `--untracked` | Show untracked files in the tree, env: `REVDIFF_UNTRACKED` | `false` |
 | `--tree-width` | File tree panel width in units (1-10), env: `REVDIFF_TREE_WIDTH` | `2` |
 | `--tab-width` | Number of spaces per tab character, env: `REVDIFF_TAB_WIDTH` | `4` |
@@ -552,8 +555,11 @@ revdiff main
 # review staged changes
 revdiff --staged
 
-# review last commit
-revdiff HEAD~1
+# review the latest commit, isolated from working-tree changes
+revdiff --commit
+
+# review another commit
+revdiff --commit=v1.2.3
 
 # diff between two refs
 revdiff main feature
@@ -595,9 +601,9 @@ printf '# Plan\n\nShip it\n' | revdiff --stdin --stdin-name plan.md
 some-command | revdiff --stdin --output /tmp/annotations.txt
 
 # round-trip: capture, edit externally, reload
-revdiff -o review.md HEAD~1
+revdiff -o review.md --commit
 $EDITOR review.md
-revdiff --annotations=review.md HEAD~1
+revdiff --annotations=review.md --commit
 ```
 
 `--annotations` reads the same markdown format that `-o` writes (see [Output Format](#output-format) below), so any file revdiff produces can be loaded back. You can also hand-author or generate that file from any other source — each record is `## path/to/file.go:LINE (+)` followed by the comment body — then step through the comments inline against the actual diff, edit or delete them in the TUI, and quit with `q` to write the final set to stdout (or to `-o`).

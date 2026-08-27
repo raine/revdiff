@@ -158,6 +158,7 @@ func run(opts options) (int, error) {
 		untrackedRenamesFn = setup.untrackedRenamesFn
 		commitLogger = setup.commitLogger
 		vcsType = setup.vcsType
+		opts.resolvedRef = setup.ref
 	}
 
 	if opts.Annotations != "" {

@@ -9,6 +9,10 @@ import (
 	"github.com/umputun/revdiff/app/ui"
 )
 
+type commitRangeResolver interface {
+	CommitRange(string) (string, error)
+}
+
 type vcsSetup struct {
 	renderer           ui.Renderer
 	vcsType            diff.VCSType
@@ -18,6 +22,7 @@ type vcsSetup struct {
 	untrackedFn        func() ([]string, error)
 	untrackedRenamesFn func([]string) ([]diff.FileEntry, error) // git-only; pairs untracked renames with their origin
 	commitLogger       diff.CommitLogger                        // VCS-backed commit log source; nil when VCS lacks the capability
+	ref                string
 }
 
 // setupVCSRenderer detects the VCS and creates the appropriate renderer, blamer, and untracked function.
@@ -31,38 +36,64 @@ func setupVCSRenderer(opts options) (vcsSetup, error) {
 	switch vcsType {
 	case diff.VCSGit:
 		g := diff.NewGit(vcsRoot)
+		ref, err := resolveCommitRef(opts, g)
+		if err != nil {
+			return vcsSetup{}, err
+		}
 		r, workDir, err := makeGitRenderer(g, opts, vcsRoot)
 		if err != nil {
 			return vcsSetup{}, err
 		}
-		return vcsSetup{renderer: r, vcsType: diff.VCSGit, gitRoot: vcsRoot, workDir: workDir, blamer: g, untrackedFn: g.UntrackedFiles, untrackedRenamesFn: g.UntrackedRenames, commitLogger: g}, nil
+		return vcsSetup{renderer: r, vcsType: diff.VCSGit, gitRoot: vcsRoot, workDir: workDir, blamer: g, untrackedFn: g.UntrackedFiles, untrackedRenamesFn: g.UntrackedRenames, commitLogger: g, ref: ref}, nil
 	case diff.VCSHg:
 		if opts.Staged {
 			fmt.Fprintln(os.Stderr, "warning: --staged ignored in mercurial repository (no staging area)")
 		}
 		h := diff.NewHg(vcsRoot)
+		ref, err := resolveCommitRef(opts, h)
+		if err != nil {
+			return vcsSetup{}, err
+		}
 		r, workDir, err := makeHgRenderer(h, opts, vcsRoot)
 		if err != nil {
 			return vcsSetup{}, err
 		}
-		return vcsSetup{renderer: r, vcsType: diff.VCSHg, workDir: workDir, blamer: h, untrackedFn: h.UntrackedFiles, commitLogger: h}, nil
+		return vcsSetup{renderer: r, vcsType: diff.VCSHg, workDir: workDir, blamer: h, untrackedFn: h.UntrackedFiles, commitLogger: h, ref: ref}, nil
 	case diff.VCSJJ:
 		if opts.Staged {
 			fmt.Fprintln(os.Stderr, "warning: --staged ignored in jujutsu repository (no staging area)")
 		}
 		jj := diff.NewJj(vcsRoot)
+		ref, err := resolveCommitRef(opts, jj)
+		if err != nil {
+			return vcsSetup{}, err
+		}
 		r, workDir, err := makeJjRenderer(jj, opts, vcsRoot)
 		if err != nil {
 			return vcsSetup{}, err
 		}
-		return vcsSetup{renderer: r, vcsType: diff.VCSJJ, workDir: workDir, blamer: jj, untrackedFn: jj.UntrackedFiles, commitLogger: jj}, nil
+		return vcsSetup{renderer: r, vcsType: diff.VCSJJ, workDir: workDir, blamer: jj, untrackedFn: jj.UntrackedFiles, commitLogger: jj, ref: ref}, nil
 	default:
+		if opts.Commit.set {
+			return vcsSetup{}, errors.New("--commit requires a git, mercurial, or jujutsu repository")
+		}
 		r, workDir, err := makeNoVCSRenderer(opts.Only, cwd)
 		if err != nil {
 			return vcsSetup{}, err
 		}
 		return vcsSetup{renderer: r, workDir: workDir}, nil
 	}
+}
+
+func resolveCommitRef(opts options, resolver commitRangeResolver) (string, error) {
+	if !opts.Commit.set {
+		return "", nil
+	}
+	ref, err := resolver.CommitRange(opts.Commit.target)
+	if err != nil {
+		return "", fmt.Errorf("resolve --commit: %w", err)
+	}
+	return ref, nil
 }
 
 // makeGitRenderer selects the appropriate git renderer based on flags.
@@ -72,7 +103,7 @@ func makeGitRenderer(g *diff.Git, opts options, repoRoot string) (ui.Renderer, s
 	switch {
 	case opts.AllFiles:
 		r = diff.NewDirectoryReader(repoRoot)
-	case len(opts.Only) > 0:
+	case len(opts.Only) > 0 && !opts.Commit.set:
 		r = diff.NewFallbackRenderer(g, opts.Only, repoRoot)
 	default:
 		r = g
@@ -87,7 +118,7 @@ func makeHgRenderer(h *diff.Hg, opts options, repoRoot string) (ui.Renderer, str
 	switch {
 	case opts.AllFiles:
 		return nil, "", errors.New("--all-files is not supported in mercurial repositories")
-	case len(opts.Only) > 0:
+	case len(opts.Only) > 0 && !opts.Commit.set:
 		r = diff.NewFallbackRenderer(h, opts.Only, repoRoot)
 	default:
 		r = h
@@ -102,7 +133,7 @@ func makeJjRenderer(j *diff.Jj, opts options, repoRoot string) (ui.Renderer, str
 	switch {
 	case opts.AllFiles:
 		r = diff.NewJjDirectoryReader(repoRoot)
-	case len(opts.Only) > 0:
+	case len(opts.Only) > 0 && !opts.Commit.set:
 		r = diff.NewFallbackRenderer(j, opts.Only, repoRoot)
 	default:
 		r = j

@@ -39,6 +39,21 @@ func NewJj(workDir string) *Jj {
 	return &Jj{workDir: workDir}
 }
 
+// CommitRange resolves rev to one commit and returns a first-parent diff range.
+// Jujutsu's synthetic root commit is the old side of a root change.
+func (j *Jj) CommitRange(rev string) (string, error) {
+	translated := j.translateRef(rev)
+	out, err := j.runJj("log", "--no-graph", "--no-pager", "--color=never", "-T", `commit_id ++ "\n"`, "-r", translated)
+	if err != nil {
+		return "", fmt.Errorf("resolve commit %q: %w", rev, err)
+	}
+	ids := strings.Fields(out)
+	if len(ids) != 1 {
+		return "", fmt.Errorf("resolve commit %q: revision must select exactly one commit", rev)
+	}
+	return "first_parent(" + ids[0] + ").." + ids[0], nil
+}
+
 // UntrackedFiles returns untracked files. Jujutsu auto-snapshots every file in the
 // working copy (respecting .gitignore), so there is no "untracked" state — this
 // always returns nil.

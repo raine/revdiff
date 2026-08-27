@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
 	"os/exec"
@@ -301,6 +302,29 @@ type Git struct {
 // NewGit creates a new Git diff renderer rooted at the given working directory.
 func NewGit(workDir string) *Git {
 	return &Git{workDir: workDir}
+}
+
+// CommitRange resolves rev to a commit and returns a first-parent diff range.
+// Root commits use Git's empty tree as the old side.
+func (g *Git) CommitRange(rev string) (string, error) {
+	commit, err := g.runGit("rev-parse", "--verify", rev+"^{commit}")
+	if err != nil {
+		return "", fmt.Errorf("resolve commit %q: %w", rev, err)
+	}
+	commit = strings.TrimSpace(commit)
+	line, err := g.runGit("rev-list", "--parents", "-n", "1", commit)
+	if err != nil {
+		return "", fmt.Errorf("resolve commit %q parents: %w", rev, err)
+	}
+	fields := strings.Fields(line)
+	if len(fields) > 1 {
+		return fields[1] + ".." + commit, nil
+	}
+	emptyTree, err := g.runGitInput("", "hash-object", "-t", "tree", "--stdin")
+	if err != nil {
+		return "", fmt.Errorf("resolve git empty tree: %w", err)
+	}
+	return strings.TrimSpace(emptyTree) + ".." + commit, nil
 }
 
 // CommitLog returns commits reachable in the given ref range, newest first.
@@ -715,6 +739,10 @@ func (g *Git) runGit(args ...string) (string, error) {
 	return runVCSEnv(g.workDir, GitEnv(), "git", args...)
 }
 
+func (g *Git) runGitInput(input string, args ...string) (string, error) {
+	return runVCSEnvInput(g.workDir, GitEnv(), strings.NewReader(input), "git", args...)
+}
+
 // runGitEnv runs git with extra environment entries (e.g. GIT_INDEX_FILE) on top of
 // GitEnv, used by the throwaway-index rename detection path.
 func (g *Git) runGitEnv(extraEnv []string, args ...string) (string, error) {
@@ -729,9 +757,14 @@ func runVCS(workDir, binary string, args ...string) (string, error) {
 // runVCSEnv executes a VCS command in the given directory and returns its output.
 // A nil env inherits the process environment; otherwise env replaces it wholesale.
 func runVCSEnv(workDir string, env []string, binary string, args ...string) (string, error) {
+	return runVCSEnvInput(workDir, env, nil, binary, args...)
+}
+
+func runVCSEnvInput(workDir string, env []string, input io.Reader, binary string, args ...string) (string, error) {
 	cmd := exec.CommandContext(context.Background(), binary, args...) //nolint:gosec // args constructed internally, not user input
 	cmd.Dir = workDir
 	cmd.Env = env
+	cmd.Stdin = input
 	out, err := cmd.Output()
 	if err != nil {
 		var exitErr *exec.ExitError

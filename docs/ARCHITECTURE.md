@@ -95,10 +95,16 @@ to carry the rename origin:
   `git diff -M` reports the pair); `FileDiff` renders them the same way via `untrackedRenameDiff`.
   Git-only — `Hg`/`Jj` never set `OldPath`, so they ignore it
 - `Hg` — runs `hg diff --git`, parses unified diff output
-- `Jj` — runs `jj diff --git`, parses unified diff output; git-style refs (HEAD, HEAD~N, A..B)
+- `Jj` - runs `jj diff --git`, parses unified diff output; git-style refs (HEAD, HEAD~N, A..B)
   translate to jj revsets via `--from`/`--to`. jj emits raw bytes for binary files, so
-  `(*Jj).synthesizeBinaryDiff` rewrites such diffs with the git-style "Binary files … differ" marker
+  `(*Jj).synthesizeBinaryDiff` rewrites such diffs with the git-style "Binary files ... differ" marker
   so `parseUnifiedDiff` produces a binary placeholder.
+
+**One-commit range resolution** - `Git`/`Hg`/`Jj` implement `CommitRange(rev)`. The composition root
+calls this capability for `--commit[=REVISION]` and stores the returned first-parent range as the
+resolved session ref before constructing the Model. Git resolves root commits against its empty
+tree, Mercurial uses the null revision, and Jujutsu uses its synthetic root commit. Merge commits
+use their first parent. The UI receives only the resolved ref and does not interpret the CLI mode.
 
 **CommitLogger capability** (`CommitLog(ref string) ([]CommitInfo, error)`) — an additive capability
 interface implemented by `Git`/`Hg`/`Jj` and consumed by the `i` info overlay. Separate from the
@@ -625,7 +631,8 @@ Several mutually exclusive input sources, validated at parse time:
 
 | Mode | Flag | Renderer | Notes |
 |------|------|----------|-------|
-| VCS diff (default) | `[base] [against]` | `Git` or `Hg` | Detects VCS, runs diff |
+| VCS diff (default) | `[base] [against]` | `Git`, `Hg`, or `Jj` | Detects VCS, runs diff |
+| One commit | `--commit[=REVISION]` | `Git`, `Hg`, or `Jj` | First-parent diff, defaults to `HEAD` |
 | Staged changes | `--staged` | `Git` or `Hg` | Cannot combine with refs |
 | All tracked files | `--all-files` / `-A` | `DirectoryReader` | Git only, not with refs/staged/only |
 | Single file(s) | `--only` / `-F` | `FileReader` | Not with include |

@@ -110,6 +110,64 @@ func TestHg_E2E_FullPipeline(t *testing.T) {
 	assert.NotContains(t, untracked, "new.txt")
 }
 
+func TestHg_E2E_CommitRange(t *testing.T) {
+	if _, err := exec.LookPath("hg"); err != nil {
+		t.Skip("hg not available")
+	}
+
+	dir := setupHgRepo(t)
+	h := NewHg(dir)
+	writeFile(t, dir, "root.txt", "root\n")
+	hgCmd(t, dir, "add", "root.txt")
+	hgCmd(t, dir, "commit", "-m", "root")
+
+	rootRef, err := h.CommitRange("0")
+	require.NoError(t, err)
+	rootEntries, err := h.ChangedFiles(rootRef, false)
+	require.NoError(t, err)
+	assert.Equal(t, []FileEntry{{Path: "root.txt", Status: FileAdded}}, rootEntries)
+
+	writeFile(t, dir, "second.txt", "committed\n")
+	hgCmd(t, dir, "add", "second.txt")
+	hgCmd(t, dir, "commit", "-m", "second")
+	writeFile(t, dir, "second.txt", "dirty\n")
+	writeFile(t, dir, "untracked.txt", "untracked\n")
+
+	ref, err := h.CommitRange("HEAD")
+	require.NoError(t, err)
+	entries, err := h.ChangedFiles(ref, false)
+	require.NoError(t, err)
+	assert.Equal(t, []FileEntry{{Path: "second.txt", Status: FileAdded}}, entries)
+}
+
+func TestHg_E2E_CommitRangeMergeUsesFirstParent(t *testing.T) {
+	if _, err := exec.LookPath("hg"); err != nil {
+		t.Skip("hg not available")
+	}
+
+	dir := setupHgRepo(t)
+	h := NewHg(dir)
+	writeFile(t, dir, "base.txt", "base\n")
+	hgCmd(t, dir, "add", "base.txt")
+	hgCmd(t, dir, "commit", "-m", "base")
+	hgCmd(t, dir, "branch", "side")
+	writeFile(t, dir, "side.txt", "side\n")
+	hgCmd(t, dir, "add", "side.txt")
+	hgCmd(t, dir, "commit", "-m", "side")
+	hgCmd(t, dir, "update", "-r", "0")
+	writeFile(t, dir, "main.txt", "main\n")
+	hgCmd(t, dir, "add", "main.txt")
+	hgCmd(t, dir, "commit", "-m", "main")
+	hgCmd(t, dir, "merge", "-r", "side")
+	hgCmd(t, dir, "commit", "-m", "merge")
+
+	ref, err := h.CommitRange("HEAD")
+	require.NoError(t, err)
+	entries, err := h.ChangedFiles(ref, false)
+	require.NoError(t, err)
+	assert.Equal(t, []FileEntry{{Path: "side.txt", Status: FileAdded}}, entries)
+}
+
 // TestHg_E2E_RefDiff tests diffs between committed revisions.
 func TestHg_E2E_RefDiff(t *testing.T) {
 	if _, err := exec.LookPath("hg"); err != nil {

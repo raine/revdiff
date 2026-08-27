@@ -134,7 +134,7 @@
         <div class="code-block"><code>/revdiff [args]</code></div>
         <h3>Useful args</h3>
         <div class="code-block"><code>/revdiff                         <span class="code-comment">-- detect uncommitted, staged, or branch changes, then open revdiff</span>
-/revdiff HEAD~1                  <span class="code-comment">-- review last commit</span>
+/revdiff --commit                <span class="code-comment">-- review last commit</span>
 /revdiff main                    <span class="code-comment">-- review against main</span>
 /revdiff --staged                <span class="code-comment">-- review staged changes</span>
 /revdiff --untracked             <span class="code-comment">-- include untracked files in working-tree review</span>
@@ -183,6 +183,7 @@
             <li><code>revdiff main..feature</code> &mdash; same as above, git dot-dot syntax</li>
             <li><code>revdiff main...feature</code> &mdash; changes since feature diverged from main</li>
         </ul>
+        <p>Use <code>revdiff --commit</code> to review exactly the changes introduced by <code>HEAD</code>, independent of staged, unstaged, and untracked work. Use <code>revdiff --commit=REVISION</code> for another commit. A merge commit is compared with its first parent. A root commit is compared with the empty tree in Git, Mercurial's null revision, or Jujutsu's synthetic root commit. <code>--commit</code> works in Git, Mercurial, and Jujutsu repositories and cannot be combined with positional refs, <code>--staged</code>, <code>--all-files</code>, <code>--stdin</code>, or <code>--compare-old</code>/<code>--compare-new</code>.</p>
         <p>In git modes (<code>--staged</code>, single-ref, two-ref) renamed files are detected automatically: the diff-pane header shows the rename origin as <code>old &rarr; new</code> and the diff renders only the real line changes instead of a full delete-and-add. With <code>--untracked</code>, a plain working-tree <code>mv old new</code> (where the new file is still untracked) is paired as a rename too. Rename detection is git-only; <code>hg</code> and <code>jj</code> show renames as separate delete/add entries.</p>
 
         <h2 id="examples">Examples</h2>
@@ -195,8 +196,11 @@ revdiff main
 <span class="code-comment"># review staged changes</span>
 revdiff --staged
 
-<span class="code-comment"># review last commit</span>
-revdiff HEAD~1
+<span class="code-comment"># review the latest commit, isolated from working-tree changes</span>
+revdiff --commit
+
+<span class="code-comment"># review another commit</span>
+revdiff --commit=v1.2.3
 
 <span class="code-comment"># diff between two refs</span>
 revdiff main feature
@@ -394,6 +398,7 @@ revdiff --dump-config > ~/.config/revdiff/config</code></div>
             <thead><tr><th>Option</th><th>Description</th><th>Default</th></tr></thead>
             <tbody>
                 <tr><td><code>--staged</code></td><td>Show staged changes</td><td><code>false</code></td></tr>
+                <tr><td><code>--commit[=REVISION]</code></td><td>Show changes introduced by one commit</td><td><code>HEAD</code></td></tr>
                 <tr><td><code>--untracked</code></td><td>Show untracked files in the tree</td><td><code>false</code></td></tr>
                 <tr><td><code>--tree-width</code></td><td>File tree width in units (1-10)</td><td><code>2</code></td></tr>
                 <tr><td><code>--tab-width</code></td><td>Spaces per tab character</td><td><code>4</code></td></tr>
@@ -721,14 +726,14 @@ map alt+t&gt;n theme_select</code></div>
         <h2 id="plugin-usage">Plugin usage</h2>
         <h3>Slash commands</h3>
         <div class="code-block"><code>/revdiff                  <span class="code-comment">-- smart detection: uncommitted, last commit, or branch diff</span>
-/revdiff HEAD~1           <span class="code-comment">-- review last commit</span>
+/revdiff --commit         <span class="code-comment">-- review last commit</span>
 /revdiff main             <span class="code-comment">-- review current branch against main</span>
 /revdiff HEAD~3           <span class="code-comment">-- review last 3 commits</span>
 /revdiff --staged         <span class="code-comment">-- review staged changes only</span>
 /revdiff all files        <span class="code-comment">-- browse all tracked files</span></code></div>
         <h3>Natural language</h3>
         <div class="code-block"><code>"review diff"                       <span class="code-comment">-- same as /revdiff, smart detection</span>
-"review diff HEAD~1"                <span class="code-comment">-- last commit</span>
+"review the last commit"            <span class="code-comment">-- last commit</span>
 "review diff against main"          <span class="code-comment">-- branch diff</span>
 "review changes from last 2 days"   <span class="code-comment">-- Claude resolves the ref</span>
 "revdiff for staged changes"        <span class="code-comment">-- staged only</span>

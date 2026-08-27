@@ -25,6 +25,29 @@ func NewHg(workDir string) *Hg {
 	return &Hg{workDir: workDir}
 }
 
+// CommitRange resolves rev to one changeset and returns a first-parent diff range.
+// Root changesets use Mercurial's null revision as the old side.
+func (h *Hg) CommitRange(rev string) (string, error) {
+	const template = "{node}\x1f{p1node}\x1e"
+	out, err := h.runHg("log", "--color=never", "-r", h.translateRef(rev), "--template", template)
+	if err != nil {
+		return "", fmt.Errorf("resolve commit %q: %w", rev, err)
+	}
+	records := strings.Split(strings.TrimSuffix(out, "\x1e"), "\x1e")
+	if len(records) != 1 {
+		return "", fmt.Errorf("resolve commit %q: revision must select exactly one changeset", rev)
+	}
+	fields := strings.Split(records[0], "\x1f")
+	if len(fields) != 2 || fields[0] == "" {
+		return "", fmt.Errorf("resolve commit %q: malformed mercurial response", rev)
+	}
+	parent := fields[1]
+	if strings.Trim(parent, "0") == "" {
+		parent = "null"
+	}
+	return parent + ".." + fields[0], nil
+}
+
 // UntrackedFiles returns untracked files using hg status.
 func (h *Hg) UntrackedFiles() ([]string, error) {
 	out, err := h.runHg("status", "--no-status", "--unknown")
