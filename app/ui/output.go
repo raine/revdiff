@@ -5,9 +5,11 @@ import (
 	"log"
 
 	tea "github.com/charmbracelet/bubbletea"
+
+	"github.com/umputun/revdiff/app/keymap"
 )
 
-// outputState holds transient feedback for the O in-session output flush.
+// outputState holds transient feedback for annotation copy and output flush.
 // hint is a status-bar message cleared on the next key press, mirroring
 // reloadState.hint.
 type outputState struct {
@@ -18,6 +20,39 @@ type postFlushFinishedMsg struct {
 	err          error
 	writtenHint  string
 	restoreMouse bool
+}
+
+func (m Model) handleOutputAction(action keymap.Action) (tea.Model, tea.Cmd, bool) {
+	switch action {
+	case keymap.ActionCopyAnnotations:
+		return m.handleCopyAnnotations(), nil, true
+	case keymap.ActionFlushOutput:
+		model, cmd := m.handleFlushOutput()
+		return model, cmd, true
+	default:
+		return m, nil, false
+	}
+}
+
+// handleCopyAnnotations copies the canonical current snapshot without changing
+// the annotation store or ending the review.
+func (m Model) handleCopyAnnotations() tea.Model {
+	n := m.store.Count()
+	if n == 0 {
+		m.output.hint = "No annotations to copy"
+		return m
+	}
+	if err := m.clipboard.Copy(m.store.FormatOutput()); err != nil {
+		log.Printf("[WARN] copy annotations to clipboard: %v", err)
+		m.output.hint = "Copy failed"
+		return m
+	}
+	noun := "annotations"
+	if n == 1 {
+		noun = "annotation"
+	}
+	m.output.hint = fmt.Sprintf("Copied %d %s", n, noun)
+	return m
 }
 
 // handleFlushOutput writes the current annotations to the configured --output

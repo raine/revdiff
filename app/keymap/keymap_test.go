@@ -37,7 +37,7 @@ func TestDefault_allExpectedBindings(t *testing.T) {
 		{"/", ActionSearch},
 		{"a", ActionConfirm}, {"enter", ActionConfirm},
 		{"A", ActionAnnotateFile}, {"d", ActionDeleteAnnotation}, {"@", ActionAnnotList}, {"ctrl+e", ActionOpenEditor},
-		{"}", ActionNextAnnotation}, {"{", ActionPrevAnnotation}, {"O", ActionFlushOutput},
+		{"}", ActionNextAnnotation}, {"{", ActionPrevAnnotation}, {"y", ActionCopyAnnotations}, {"O", ActionFlushOutput},
 		{"v", ActionToggleCollapsed}, {"C", ActionToggleCompact}, {"w", ActionToggleWrap}, {"t", ActionToggleTree},
 		{"L", ActionToggleLineNums}, {"B", ActionToggleBlame}, {"W", ActionToggleWordDiff},
 		{".", ActionToggleHunk}, {" ", ActionMarkReviewed}, {"f", ActionFilter}, {"F", ActionFilterUnreviewed},
@@ -91,6 +91,36 @@ func TestDefault_ctrlKeysMatchBubbletea(t *testing.T) {
 	km := Default()
 	assert.Equal(t, ActionHalfPageDown, km.Resolve(ctrlD.String()))
 	assert.Equal(t, ActionHalfPageUp, km.Resolve(ctrlU.String()))
+}
+
+func TestActionCopyAnnotations_RegistrationHelpDumpAndCustomConfiguration(t *testing.T) {
+	assert.True(t, IsValidAction(ActionCopyAnnotations))
+
+	km := Default()
+	assert.Equal(t, ActionCopyAnnotations, km.Resolve("y"))
+	found := false
+	for _, section := range km.HelpSections() {
+		for _, entry := range section.Entries {
+			if entry.Action == ActionCopyAnnotations {
+				assert.Equal(t, "Annotations", section.Name)
+				assert.Equal(t, "copy all annotations", entry.Description)
+				assert.Equal(t, "y", entry.Keys)
+				found = true
+			}
+		}
+	}
+	assert.True(t, found, "copy_annotations should appear in annotation help")
+
+	var dumped strings.Builder
+	require.NoError(t, km.Dump(&dumped))
+	assert.Contains(t, dumped.String(), "map y copy_annotations")
+
+	path := t.TempDir() + "/keybindings"
+	require.NoError(t, os.WriteFile(path, []byte("unmap y\nmap ctrl+y copy_annotations\n"), 0o600))
+	custom, err := Load(path)
+	require.NoError(t, err)
+	assert.Empty(t, custom.Resolve("y"))
+	assert.Equal(t, ActionCopyAnnotations, custom.Resolve("ctrl+y"))
 }
 
 func TestActionJumpFile_RegistrationHelpAndDump(t *testing.T) {

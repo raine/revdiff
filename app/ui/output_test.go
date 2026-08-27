@@ -24,6 +24,71 @@ func (s *postFlushHookStub) Prepare(content string) *exec.Cmd {
 	return exec.Command("sh", "-c", "exit 0")
 }
 
+func TestModel_HandleCopyAnnotations(t *testing.T) {
+	annotations := []annotation.Annotation{
+		{File: "b.go", Line: 8, Type: "-", Comment: "second file"},
+		{File: "a.go", Line: 3, Type: "+", Comment: "first file"},
+		{File: "a.go", Line: 7, Type: "+", Comment: "another note"},
+	}
+
+	t.Run("copies canonical complete snapshot without mutation", func(t *testing.T) {
+		store := annotation.NewStore()
+		for _, a := range annotations {
+			store.Add(a)
+		}
+		before := store.All()
+		clipboard := &mocks.ClipboardMock{CopyFunc: func(content string) error {
+			assert.Equal(t, store.FormatOutput(), content)
+			return nil
+		}}
+		m := testNewModel(t, plainRenderer(), store, noopHighlighter(), ModelConfig{Clipboard: clipboard})
+
+		model := m.handleCopyAnnotations().(Model)
+		assert.Equal(t, "Copied 3 annotations", model.output.hint)
+		assert.Len(t, clipboard.CopyCalls(), 1)
+		assert.Equal(t, before, store.All(), "copy must leave every annotation unchanged")
+	})
+
+	t.Run("empty annotations do not call clipboard", func(t *testing.T) {
+		clipboard := &mocks.ClipboardMock{CopyFunc: func(string) error {
+			t.Fatal("clipboard must not be called for an empty store")
+			return nil
+		}}
+		m := testNewModel(t, plainRenderer(), annotation.NewStore(), noopHighlighter(), ModelConfig{Clipboard: clipboard})
+
+		model := m.handleCopyAnnotations().(Model)
+		assert.Equal(t, "No annotations to copy", model.output.hint)
+		assert.Empty(t, clipboard.CopyCalls())
+	})
+
+	t.Run("clipboard failure leaves review and store intact", func(t *testing.T) {
+		store := annotation.NewStore()
+		store.Add(annotations[0])
+		clipboard := &mocks.ClipboardMock{CopyFunc: func(string) error { return errors.New("terminal rejected OSC 52") }}
+		m := testNewModel(t, plainRenderer(), store, noopHighlighter(), ModelConfig{Clipboard: clipboard})
+
+		model := m.handleCopyAnnotations().(Model)
+		assert.Equal(t, "Copy failed", model.output.hint)
+		assert.Equal(t, []annotation.Annotation{annotations[0]}, store.Get("b.go"))
+	})
+
+	t.Run("single annotation uses singular feedback", func(t *testing.T) {
+		store := annotation.NewStore()
+		store.Add(annotations[0])
+		clipboard := &mocks.ClipboardMock{CopyFunc: func(string) error { return nil }}
+		m := testNewModel(t, plainRenderer(), store, noopHighlighter(), ModelConfig{Clipboard: clipboard})
+
+		result := m.handleCopyAnnotations()
+		assert.Equal(t, "Copied 1 annotation", result.(Model).output.hint)
+	})
+}
+
+func TestNewModel_TypedNilClipboardUsesDefault(t *testing.T) {
+	var clipboard *mocks.ClipboardMock
+	m := testNewModel(t, plainRenderer(), annotation.NewStore(), noopHighlighter(), ModelConfig{Clipboard: clipboard})
+	assert.NotNil(t, m.clipboard)
+}
+
 func TestNewModel_OutputPath(t *testing.T) {
 	tests := []struct {
 		name string
@@ -165,6 +230,22 @@ func TestNewModel_TypedNilPostFlushHook(t *testing.T) {
 	var hook *postFlushHookStub
 	m := testNewModel(t, plainRenderer(), annotation.NewStore(), noopHighlighter(), ModelConfig{PostFlushHook: hook})
 	assert.Nil(t, m.postFlushHook)
+}
+
+func TestModel_ActionCopyAnnotations_Dispatch(t *testing.T) {
+	store := annotation.NewStore()
+	store.Add(annotation.Annotation{File: "a.go", Line: 1, Type: "+", Comment: "note"})
+	clipboard := &mocks.ClipboardMock{CopyFunc: func(content string) error {
+		assert.Equal(t, store.FormatOutput(), content)
+		return nil
+	}}
+	m := testNewModel(t, plainRenderer(), store, noopHighlighter(), ModelConfig{Clipboard: clipboard})
+
+	result, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'y'}})
+	model := result.(Model)
+	assert.Nil(t, cmd)
+	assert.Equal(t, "Copied 1 annotation", model.output.hint)
+	assert.Len(t, clipboard.CopyCalls(), 1)
 }
 
 func TestModel_ActionFlushOutput_Dispatch(t *testing.T) {

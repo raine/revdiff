@@ -8,6 +8,7 @@ package ui
 //go:generate moq -out mocks/sgr_processor.go -pkg mocks -skip-ensure -fmt goimports . sgrProcessor
 //go:generate moq -out mocks/word_differ.go -pkg mocks -skip-ensure -fmt goimports . wordDiffer
 //go:generate moq -out mocks/external_editor.go -pkg mocks -skip-ensure -fmt goimports . ExternalEditor
+//go:generate moq -out mocks/clipboard.go -pkg mocks -skip-ensure -fmt goimports . Clipboard
 //go:generate moq -out mocks/commit_log_source.go -pkg mocks -skip-ensure -fmt goimports . commitLogSource
 
 // note: ThemeCatalog is not moq-generated because ThemeEntry/ThemeSpec are defined in this package,
@@ -27,6 +28,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 
 	"github.com/umputun/revdiff/app/annotation"
+	terminalclipboard "github.com/umputun/revdiff/app/clipboard"
 	"github.com/umputun/revdiff/app/diff"
 	"github.com/umputun/revdiff/app/editor"
 	"github.com/umputun/revdiff/app/keymap"
@@ -121,6 +123,11 @@ type commitLogSource interface {
 	CommitLog(ref string) ([]diff.CommitInfo, error)
 }
 
+// Clipboard copies annotation snapshots to the terminal clipboard.
+type Clipboard interface {
+	Copy(content string) error
+}
+
 // PostFlushHook prepares the external command run after an in-session output flush.
 type PostFlushHook interface {
 	Prepare(content string) *exec.Cmd
@@ -189,6 +196,7 @@ var (
 	_ sgrProcessor   = (*style.SGR)(nil)
 	_ wordDiffer     = (*worddiff.Differ)(nil)
 	_ overlayManager = (*overlay.Manager)(nil)
+	_ Clipboard      = terminalclipboard.Copier{}
 )
 
 // FileTreeComponent is what Model needs from a file-tree navigation component.
@@ -572,6 +580,7 @@ type Model struct {
 	keymap        *keymap.Keymap
 	themes        ThemeCatalog   // theme catalog for discovery, resolve, and persistence
 	editor        ExternalEditor // launches $EDITOR for annotation editing and source-file opening
+	clipboard     Clipboard      // copies canonical annotation snapshots through the terminal
 	postFlushHook PostFlushHook  // optional command run after an in-session output flush
 
 	// grouped state
@@ -678,7 +687,7 @@ type reviewStatsLoadedMsg struct {
 // ModelConfig holds all dependencies and configuration for NewModel.
 // All dependencies (Renderer, Store, Highlighter, StyleResolver, StyleRenderer, SGR, WordDiffer, Overlay,
 // NewFileTree, ParseTOC, Themes) are required and must be constructed by the caller.
-// Blamer, LoadUntracked, and Keymap are optional.
+// Blamer, LoadUntracked, Keymap, Clipboard, and other integration hooks are optional.
 type ModelConfig struct {
 	// --- UI dependencies (required, caller-constructed) ---
 	Renderer    Renderer          // diff renderer: ChangedFiles, FileDiff
@@ -723,6 +732,7 @@ type ModelConfig struct {
 	LoadUntrackedRenames func([]string) ([]diff.FileEntry, error)
 	Keymap               *keymap.Keymap // custom key bindings (nil uses defaults)
 	Editor               ExternalEditor // external-editor driver (nil uses app/editor.Editor{})
+	Clipboard            Clipboard      // terminal clipboard driver (nil uses app/clipboard.Copier)
 	PostFlushHook        PostFlushHook  // optional command run after an in-session output flush
 	// CommitLog enumerates commits in the current ref range for the info popup's
 	// commit-log section. When nil, NewModel attempts to derive the source by
@@ -862,6 +872,10 @@ func NewModel(cfg ModelConfig) (Model, error) {
 	if ed == nil || isNilValue(ed) {
 		ed = editor.Editor{}
 	}
+	cb := cfg.Clipboard
+	if cb == nil || isNilValue(cb) {
+		cb = terminalclipboard.New()
+	}
 	postFlushHook := cfg.PostFlushHook
 	if isNilValue(postFlushHook) {
 		postFlushHook = nil
@@ -892,6 +906,7 @@ func NewModel(cfg ModelConfig) (Model, error) {
 		parseTOC:      cfg.ParseTOC,
 		themes:        cfg.Themes,
 		editor:        ed,
+		clipboard:     cb,
 		postFlushHook: postFlushHook,
 		cfg: modelConfigState{
 			ref:                cfg.Ref,
@@ -1093,6 +1108,9 @@ func (m Model) dispatchAction(action keymap.Action) (tea.Model, tea.Cmd) {
 	if model, cmd, ok := m.handleOverlayOpen(action); ok {
 		return model, cmd
 	}
+	if model, cmd, ok := m.handleOutputAction(action); ok {
+		return model, cmd
+	}
 
 	switch action {
 	case keymap.ActionDismiss:
@@ -1127,8 +1145,6 @@ func (m Model) dispatchAction(action keymap.Action) (tea.Model, tea.Cmd) {
 		return m.handleAnnotNav(action == keymap.ActionNextAnnotation)
 	case keymap.ActionReload:
 		return m.handleReload()
-	case keymap.ActionFlushOutput:
-		return m.handleFlushOutput()
 	default: // remaining actions (navigation, search, etc.) handled by pane-specific handlers below
 	}
 

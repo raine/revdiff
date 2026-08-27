@@ -13,6 +13,7 @@ import (
 	"github.com/muesli/termenv"
 
 	"github.com/umputun/revdiff/app/annotation"
+	"github.com/umputun/revdiff/app/clipboard"
 	"github.com/umputun/revdiff/app/diff"
 	"github.com/umputun/revdiff/app/fsutil"
 	"github.com/umputun/revdiff/app/handoff"
@@ -201,6 +202,7 @@ func run(opts options) (int, error) {
 		LoadUntracked:        untrackedFn,
 		LoadUntrackedRenames: untrackedRenamesFn,
 		Keymap:               km,
+		Clipboard:            clipboard.New(),
 		PostFlushHook:        postFlushHook,
 		CommitLog:            commitLogger,
 		CommitsApplicable:    commitsApplicable(opts, commitLogger),

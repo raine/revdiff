@@ -24,6 +24,7 @@ TUI for reviewing diffs, files, and documents with inline annotations, built wit
 │  app/diff/        — VCS detection + diff parsing    │
 │  app/highlight/   — chroma syntax coloring          │
 │  app/annotation/  — in-memory annotation store      │
+│  app/clipboard/   - OSC 52 terminal clipboard       │
 │  app/editor/      — external $EDITOR invocation     │
 │  app/handoff/     — post-flush command preparation  │
 │  app/keymap/      — configurable keybindings        │
@@ -358,6 +359,14 @@ for the optional post-flush hook; it backs the in-session `O` flush. The exit-ti
 `fsutil.AtomicWriteFile` directly with the already-formatted output, so both paths share the same
 atomic writer and a concurrent reader never sees a truncated file.
 
+### app/clipboard/ - terminal clipboard delivery
+
+Copies text through OSC 52 on the controlling TTY. `Copier.Copy` enforces a 100,000-byte
+content limit, uses GNU screen passthrough framing when applicable, and leaves tmux OSC 52 handling
+to tmux's `set-clipboard` policy. OSC 52 travels across SSH to the user's local terminal. The
+terminal protocol has no acceptance acknowledgement, so success means the complete sequence was
+written. Consumed by `app/ui` through the consumer-side `Clipboard` interface.
+
 ### app/editor/ — external editor invocation
 
 Prepares external editor processes for annotation temp-file editing and source-file opening.
@@ -434,6 +443,8 @@ belong to the consumer.
   `Compose()`; implemented by `overlay.Manager`
 - **`ThemeCatalog`** — `Entries()`, `Resolve()`, `Persist()`; implemented by `themeCatalog` adapter
   in `app/themes.go` (composes `theme.Catalog` + config persistence)
+- **`Clipboard`** - `Copy(content)` for terminal clipboard delivery; implemented by
+  `clipboard.Copier` (default wiring via `ModelConfig.Clipboard`)
 - **`ExternalEditor`** — `Command(content)` for annotation temp-file editing,
   `SourceCommand(path string, line int)` for opening source files; implemented by `editor.Editor`
   (default wiring via `ModelConfig.Editor`; stubbed in tests)
@@ -531,6 +542,7 @@ User presses 'a' on diff line
           content == ""  → cancelAnnotation (preserve existing annotation)
           otherwise      → saveComment(content, fileLevel, line, type)
   → re-render shows annotation (multi-line aware) below diff line
+  → 'y' (copy_annotations): store.FormatOutput() → Clipboard.Copy(snapshot), revdiff stays open and store remains unchanged
   → 'O' (flush_output, requires --output): store.WriteFile(path) → atomic write, revdiff stays open (annotate → flush → hand to agent → 'R' reload loop)
       → optional PostFlushHook.Prepare(snapshot) → tea.ExecProcess → command reads snapshot from stdin
   → on quit: store.FormatOutput() → structured output to stdout/file (file branch uses store.WriteFile)

@@ -70,6 +70,7 @@ const (
 	ActionReload           Action = "reload"
 	ActionOpenEditor       Action = "open_editor"
 	ActionOpenFileInEditor Action = "open_file_in_editor"
+	ActionCopyAnnotations  Action = "copy_annotations"
 	ActionFlushOutput      Action = "flush_output"
 )
 
@@ -97,6 +98,7 @@ var validActions = map[Action]bool{
 	ActionReload:           true,
 	ActionOpenEditor:       true,
 	ActionOpenFileInEditor: true,
+	ActionCopyAnnotations:  true,
 	ActionFlushOutput:      true,
 }
 
@@ -226,6 +228,7 @@ func defaultDescriptions() []HelpEntry {
 		{ActionOpenEditor, "open annotation in $EDITOR", "Annotations"},
 		{ActionNextAnnotation, "next annotation (across files)", "Annotations"},
 		{ActionPrevAnnotation, "previous annotation (across files)", "Annotations"},
+		{ActionCopyAnnotations, "copy all annotations", "Annotations"},
 		{ActionFlushOutput, "flush annotations to output file", "Annotations"},
 
 		// view toggles
@@ -289,6 +292,7 @@ func defaultBindings() map[string]Action {
 		"ctrl+e": ActionOpenEditor,
 		"}":      ActionNextAnnotation,
 		"{":      ActionPrevAnnotation,
+		"y":      ActionCopyAnnotations,
 		"O":      ActionFlushOutput,
 		"v":      ActionToggleCollapsed,
 		"C":      ActionToggleCompact,
