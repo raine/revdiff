@@ -545,10 +545,12 @@ type vimState struct {
 
 // annotationState holds annotation input lifecycle state.
 type annotationState struct {
-	annotating         bool            // true when annotation text input is active
-	fileAnnotating     bool            // true when annotating at file level (Line=0)
-	cursorOnAnnotation bool            // true when cursor is on the annotation sub-line (not the diff line)
-	input              textinput.Model // text input for annotations
+	annotating         bool                   // true when annotation text input is active
+	fileAnnotating     bool                   // true when annotating at file level (Line=0)
+	cursorOnAnnotation bool                   // true when cursor is on the annotation sub-line (not the diff line)
+	input              textinput.Model        // text input for annotations
+	target             *annotation.Annotation // exact line, range, or hunk target being edited
+	selection          rangeSelection
 	// existingMultiline holds the original multi-line comment of an annotation
 	// being re-edited. textinput's sanitizer collapses \n to space, so pre-filling
 	// via SetValue would silently flatten the stored content. When set, the
@@ -1132,6 +1134,10 @@ func (m Model) dispatchAction(action keymap.Action) (tea.Model, tea.Cmd) {
 		return m.handleFileOrSearchNav(false)
 	case keymap.ActionConfirm:
 		return m.handleEnterKey()
+	case keymap.ActionSelectRange:
+		return m.handleSelectRange()
+	case keymap.ActionAnnotateHunk:
+		return m.handleAnnotateHunk()
 	case keymap.ActionAnnotateFile:
 		return m.handleFileAnnotateKey()
 	case keymap.ActionMarkReviewed:
@@ -1140,6 +1146,10 @@ func (m Model) dispatchAction(action keymap.Action) (tea.Model, tea.Cmd) {
 		keymap.ActionToggleLineNums, keymap.ActionToggleBlame, keymap.ActionToggleWordDiff, keymap.ActionToggleUntracked:
 		return m.handleViewToggle(action)
 	case keymap.ActionNextHunk, keymap.ActionPrevHunk:
+		if m.annot.selection.active {
+			m.output.hint = "Selection stays within the current hunk"
+			return m, nil
+		}
 		return m.handleHunkNav(action == keymap.ActionNextHunk)
 	case keymap.ActionNextAnnotation, keymap.ActionPrevAnnotation:
 		return m.handleAnnotNav(action == keymap.ActionNextAnnotation)

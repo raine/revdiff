@@ -49,6 +49,10 @@ After `revdiff_review` returns annotations, address them directly from the tool 
 
 ## Annotation handling loop
 
+Inside revdiff, `Space` starts a contiguous range on an added or removed row. Movement extends it within the canonical hunk, and a left-button drag selects the same way while release preserves the selection. `a` or `Enter` annotates the selected rows, `Esc` cancels, `c` annotates the whole hunk, and `m` marks the file reviewed.
+
+Legacy line, file-level, and same-side range annotations use `## filename:line[-end] (type)`. Explicit ranges and whole hunks use `## path @@ -OLD_START,OLD_COUNT +NEW_START,NEW_COUNT @@ (range)` or `(hunk)`, followed by the counted clean `-` and `+` excerpt rows in source order, a blank line, then the comment. Treat only the text after that blank line as the comment.
+
 When annotations arrive from `/revdiff` or `revdiff_review`:
 
 1. If any `revdiff_review` call returns no annotations, stop. Do not relaunch revdiff after a no-annotation result unless the user explicitly asks for another review.
@@ -122,7 +126,7 @@ revdiff also writes to history when the process is terminated by a signal (a SIG
 
 - Use `$REVDIFF_HISTORY_DIR` when set; otherwise use `~/.config/revdiff/history/`.
 - Prefer the history subdirectory matching the current repository root name when present.
-- History files contain annotation blocks in `## file:line (type)` format, usually followed by captured diff context.
+- History files contain legacy `## file:line[-end] (type)` blocks and scoped `## path @@ -OLD_START,OLD_COUNT +NEW_START,NEW_COUNT @@ (range|hunk)` blocks, usually followed by captured diff context.
 
 ## In-session review preload
 
@@ -134,6 +138,7 @@ When the user wants to review comments already present in the current conversati
 - If `revdiff` is not on `PATH`, set `REVDIFF_BIN` to its absolute path.
 - The extension sets `REVDIFF_EXIT_CODE_ON_ANNOTATIONS`; `10` means annotations were captured, not failure.
 - Inside a review the user can press `y` to copy the complete current annotation snapshot to the terminal clipboard without quitting or changing annotations.
+- `Space` starts a contiguous range selection, `a` or `Enter` annotates it, `Esc` cancels it, `c` annotates the whole canonical hunk, and `m` marks the file reviewed.
 - The user can press `Y` on an added or removed line to copy the complete underlying diff hunk as a relative path followed by plain `+` and `-` lines.
 - The user can press `O` to flush annotations to the output file mid-session, but the pi flow does not need it: pi is suspended until revdiff exits and returns the captured annotations on quit. The keep-open flush loop matters only for standalone use outside pi.
 - You can still use revdiff standalone outside pi; the extension is only a convenience layer around the existing binary.

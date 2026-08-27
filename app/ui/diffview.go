@@ -354,6 +354,7 @@ func (m Model) lineRenderFlags(idx int, annotationMap map[annotLineKey]string) l
 	f := lineRenderFlags{
 		cursor:      m.isCursorLine(idx),
 		searchMatch: m.search.matchSet[idx],
+		selected:    m.selectionContains(idx),
 	}
 	// the live input row carries textinput's own state (value, cursor position), which is
 	// not reducible to a comparable key — mark it uncacheable rather than key on it.
@@ -385,7 +386,12 @@ func (m Model) buildAnnotationMap() (annotations map[annotLineKey]string, fileCo
 			fileComment = a.Comment
 			continue
 		}
-		annotations[annotLineKey{line: a.Line, changeType: diff.ChangeType(a.Type)}] = a.Comment
+		key := annotLineKey{line: a.Line, changeType: diff.ChangeType(a.Type)}
+		if existing, ok := annotations[key]; ok {
+			annotations[key] = existing + "\n" + a.Comment
+		} else {
+			annotations[key] = a.Comment
+		}
 	}
 	return annotations, fileComment
 }
@@ -426,7 +432,7 @@ func (m Model) renderDiffLine(b *strings.Builder, idx int, dl diff.DiffLine) {
 
 	// wrap mode: break long lines at word boundaries (dividers are short, skip them)
 	if m.modes.wrap && dl.ChangeType != diff.ChangeDivider {
-		m.renderWrappedDiffLine(b, dl, textContent, hasHighlight, isCursor, isSearchMatch)
+		m.renderWrappedDiffLine(b, idx, dl, textContent, hasHighlight, isCursor, isSearchMatch)
 		return
 	}
 
@@ -453,11 +459,11 @@ func (m Model) renderDiffLine(b *strings.Builder, idx int, dl diff.DiffLine) {
 	if isCursor {
 		cursor = m.renderer.DiffCursor(m.cfg.noColors)
 	}
-	b.WriteString(cursor + numGutter + blGutter + content + "\n")
+	b.WriteString(m.selectionRow(cursor+numGutter+blGutter+content, idx) + "\n")
 }
 
 // renderWrappedDiffLine renders a diff line with word wrapping, producing continuation lines with ↪ markers.
-func (m Model) renderWrappedDiffLine(b *strings.Builder, dl diff.DiffLine, textContent string, hasHighlight, isCursor, isSearchMatch bool) {
+func (m Model) renderWrappedDiffLine(b *strings.Builder, idx int, dl diff.DiffLine, textContent string, hasHighlight, isCursor, isSearchMatch bool) {
 	numGutter, blGutter := m.lineGutters(dl)
 	numBlank, blBlank := m.gutterBlanks()
 
@@ -484,7 +490,7 @@ func (m Model) renderWrappedDiffLine(b *strings.Builder, dl diff.DiffLine, textC
 		if i == 0 && isCursor {
 			cursor = m.renderer.DiffCursor(m.cfg.noColors)
 		}
-		b.WriteString(cursor + ng + bg + styled + "\n")
+		b.WriteString(m.selectionRow(cursor+ng+bg+styled, idx) + "\n")
 	}
 }
 
@@ -883,6 +889,7 @@ type globalRenderKey struct {
 type lineRenderFlags struct {
 	cursor      bool
 	searchMatch bool
+	selected    bool
 	annotCursor bool
 	hasComment  bool
 	liveInput   bool

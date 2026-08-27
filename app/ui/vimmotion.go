@@ -165,6 +165,13 @@ func (m Model) resolveVimLeader(keyStr string) (tea.Model, tea.Cmd) {
 func (m Model) repeatDiffAction(action keymap.Action, n int) tea.Model {
 	m.vim.count = 0
 	m.vim.hint = ""
+	if m.annot.selection.active {
+		for range n {
+			m.extendSelectionForAction(action)
+		}
+		m.syncTOCActiveSection()
+		return m
+	}
 	// precompute hunks once; passing into the per-step helpers avoids the
 	// O(N × len(diff)) rescan that would happen if each step called findHunks.
 	hunks := m.findHunks()

@@ -384,3 +384,26 @@ func TestPreloadAnnotations_EmptyFile(t *testing.T) {
 	require.NoError(t, preloadAnnotations(path, store, r, "", false, nil, nil, "", &bytes.Buffer{}))
 	assert.Equal(t, 0, store.Count())
 }
+
+func TestPreloadAnnotations_PreservesScopedExcerpt(t *testing.T) {
+	body := "## a.go @@ -4,1 +4,1 @@ (range)\n-old\n+new\n\nreplace\n"
+	path := writeTempAnnotations(t, body)
+	store := annotation.NewStore()
+	r := &mocks.RendererMock{
+		ChangedFilesFunc: func(string, bool) ([]diff.FileEntry, error) {
+			return []diff.FileEntry{{Path: "a.go", Status: diff.FileModified}}, nil
+		},
+		FileDiffFunc: func(diff.FileDiffRequest) ([]diff.DiffLine, error) {
+			return []diff.DiffLine{
+				{OldNum: 4, Content: "old", ChangeType: diff.ChangeRemove},
+				{NewNum: 4, Content: "new", ChangeType: diff.ChangeAdd},
+			}, nil
+		},
+	}
+	require.NoError(t, preloadAnnotations(path, store, r, "", false, nil, nil, "", &bytes.Buffer{}))
+	assert.Equal(t, body, store.FormatOutput())
+	got := store.Get("a.go")
+	require.Len(t, got, 1)
+	assert.Equal(t, annotation.ScopeRange, got[0].Scope)
+	assert.Equal(t, []annotation.ExcerptLine{{Type: "-", Content: "old"}, {Type: "+", Content: "new"}}, got[0].Excerpt)
+}

@@ -126,7 +126,7 @@ func (m Model) renderCollapsedAddLine(b *strings.Builder, idx int, dl diff.DiffL
 	// wrap mode: break long lines at word boundaries with continuation markers
 	if m.modes.wrap {
 		m.renderWrappedCollapsedLine(b, textContent, wrappedLineCtx{
-			gutter: gutter, numGutter: numGutter, blGutter: blGutter,
+			idx: idx, gutter: gutter, numGutter: numGutter, blGutter: blGutter,
 			isCursor: isCursor, hasHighlight: hasHighlight,
 			isSearchMatch: isSearchMatch,
 			lineStyle:     lineStyle, hlStyle: lineHlStyle, bgColor: bgColor,
@@ -146,12 +146,13 @@ func (m Model) renderCollapsedAddLine(b *strings.Builder, idx int, dl diff.DiffL
 	if isCursor {
 		cursor = m.renderer.DiffCursor(m.cfg.noColors)
 	}
-	b.WriteString(cursor + numGutter + blGutter + content + "\n")
+	b.WriteString(m.selectionRow(cursor+numGutter+blGutter+content, idx) + "\n")
 }
 
 // wrappedLineCtx holds rendering context for a wrapped collapsed line,
 // reducing the parameter count of renderWrappedCollapsedLine.
 type wrappedLineCtx struct {
+	idx                         int
 	gutter, numGutter, blGutter string
 	isCursor, hasHighlight      bool
 	isSearchMatch               bool // true when the row is search-matched; drives no-colors marker fallback
@@ -179,7 +180,7 @@ func (m Model) renderWrappedCollapsedLine(b *strings.Builder, textContent string
 		if isFirst && ctx.isCursor {
 			cursor = m.renderer.DiffCursor(m.cfg.noColors)
 		}
-		b.WriteString(cursor + ng + bg + styled + "\n")
+		b.WriteString(m.selectionRow(cursor+ng+bg+styled, ctx.idx) + "\n")
 	}
 }
 
@@ -365,6 +366,11 @@ func (m *Model) toggleCollapsedMode() {
 	}
 	m.modes.collapsed.enabled = !m.modes.collapsed.enabled
 	m.modes.collapsed.expandedHunks = make(map[int]bool)
+	if m.modes.collapsed.enabled && m.annot.selection.active {
+		if r, ok := m.hunkRangeAt(m.annot.selection.anchor); ok {
+			m.modes.collapsed.expandedHunks[r.start] = true
+		}
+	}
 	m.annot.cursorOnAnnotation = false // visible lines change, reset annotation cursor state
 	m.adjustCursorIfHidden()
 	m.realignSearchCursor()
@@ -382,6 +388,12 @@ func (m *Model) toggleHunkExpansion() {
 		return
 	}
 	if m.modes.collapsed.expandedHunks[hunkStart] {
+		if m.annot.selection.active {
+			if r, ok := m.hunkRangeAt(m.annot.selection.anchor); ok && r.start == hunkStart {
+				m.output.hint = "Selected hunk stays expanded"
+				return
+			}
+		}
 		delete(m.modes.collapsed.expandedHunks, hunkStart)
 		m.annot.cursorOnAnnotation = false // annotations on removed lines become invisible
 		m.adjustCursorIfHidden()

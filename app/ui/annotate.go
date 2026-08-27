@@ -67,37 +67,38 @@ func (m *Model) newAnnotationInput(placeholder string, prefixWidth int) (textinp
 	return ti, cmd
 }
 
-// startAnnotation enters annotation input mode for the current cursor line.
+// startAnnotation enters annotation input mode for the active selection or cursor line.
 func (m *Model) startAnnotation() tea.Cmd {
-	m.clearPendingInputState()
+	if r, ok := m.selectedRange(); ok {
+		return m.startScopedAnnotation(annotation.ScopeRange, r)
+	}
 	dl, ok := m.cursorDiffLine()
-	if !ok || dl.ChangeType == diff.ChangeDivider {
+	if !ok || dl.ChangeType == diff.ChangeDivider || dl.IsBinary || dl.IsPlaceholder {
+		m.output.hint = "Cursor is not annotatable"
 		return nil
 	}
-	// prevent annotating hidden or placeholder removed lines in collapsed mode
 	hunks := m.findHunks()
-	if m.isCollapsedHidden(m.nav.diffCursor, hunks) {
+	if m.isCollapsedHidden(m.nav.diffCursor, hunks) || m.isDeleteOnlyPlaceholder(m.nav.diffCursor, hunks) {
+		m.output.hint = "Cursor is not annotatable"
 		return nil
 	}
-	if m.isDeleteOnlyPlaceholder(m.nav.diffCursor, hunks) {
-		return nil
+	target := annotation.Annotation{File: m.file.name, Line: m.diffLineNum(dl), Type: string(dl.ChangeType)}
+	if m.annot.cursorOnAnnotation && m.annot.target != nil {
+		target = *m.annot.target
 	}
+	m.annot.target = &target
+	return m.startAnnotationInput(target)
+}
 
-	editorKey := m.editorKeyDisplay()
+func (m *Model) startAnnotationInput(target annotation.Annotation) tea.Cmd {
+	m.clearPendingInputState()
 	placeholder := "annotation..."
-	if editorKey != "" {
+	if editorKey := m.editorKeyDisplay(); editorKey != "" {
 		placeholder = fmt.Sprintf("annotation... (%s for editor)", editorKey)
 	}
-
-	// pre-fill with existing annotation if one exists. multi-line comments are
-	// NOT set via ti.SetValue because textinput's sanitizer collapses \n to
-	// space; instead, stash the original in existingMultiline and hint at it
-	// via the placeholder so the editor key can seed the editor from it and
-	// Enter with empty input preserves it unchanged.
-	lineNum := m.diffLineNum(dl)
 	var preFill, existingMultiline string
-	for _, a := range m.store.Get(m.file.name) {
-		if a.Line != lineNum || a.Type != string(dl.ChangeType) {
+	for _, a := range m.store.Get(target.File) {
+		if !sameAnnotationTarget(a, target) {
 			continue
 		}
 		if strings.Contains(a.Comment, "\n") {
@@ -108,18 +109,27 @@ func (m *Model) startAnnotation() tea.Cmd {
 		}
 		break
 	}
-
-	ti, cmd := m.newAnnotationInput(placeholder, 3+lipgloss.Width(m.annotPrefix())) // cursor col + annotation prefix + border margin
+	ti, cmd := m.newAnnotationInput(placeholder, 3+lipgloss.Width(m.annotPrefix()))
 	if preFill != "" {
 		ti.SetValue(preFill)
 	}
-
 	m.annot.input = ti
 	m.annot.annotating = true
 	m.annot.fileAnnotating = false
 	m.annot.existingMultiline = existingMultiline
 	m.ensureLineAnnotationInputVisible()
 	return cmd
+}
+
+func sameAnnotationTarget(a, b annotation.Annotation) bool {
+	if a.File != b.File || a.Scope != b.Scope {
+		return false
+	}
+	if a.Scope == annotation.ScopeLine {
+		return a.Line == b.Line && a.Type == b.Type
+	}
+	return a.OldStart == b.OldStart && a.OldCount == b.OldCount &&
+		a.NewStart == b.NewStart && a.NewCount == b.NewCount
 }
 
 // ensureLineAnnotationInputVisible scrolls the viewport so the line-annotation
@@ -146,6 +156,8 @@ func (m *Model) ensureLineAnnotationInputVisible() {
 // startFileAnnotation enters annotation input mode for a file-level annotation (Line=0).
 func (m *Model) startFileAnnotation() tea.Cmd {
 	m.clearPendingInputState()
+	m.clearSelection()
+	m.annot.target = nil
 	if m.file.name == "" {
 		return nil
 	}
@@ -201,13 +213,33 @@ func (m *Model) saveAnnotation() {
 		m.saveComment(text, m.file.name, true, 0, "")
 		return
 	}
-
+	if m.annot.target != nil {
+		m.saveTargetComment(text, *m.annot.target)
+		return
+	}
 	dl, ok := m.cursorDiffLine()
 	if !ok {
 		m.cancelAnnotation()
 		return
 	}
 	m.saveComment(text, m.file.name, false, m.diffLineNum(dl), string(dl.ChangeType))
+}
+
+func (m *Model) saveTargetComment(text string, target annotation.Annotation) {
+	if target.Scope == annotation.ScopeLine {
+		m.saveComment(text, target.File, false, target.Line, target.Type)
+		return
+	}
+	target.Comment = text
+	m.store.Add(target)
+	m.annot.annotating = false
+	m.annot.fileAnnotating = false
+	m.annot.existingMultiline = ""
+	m.annot.target = nil
+	m.annot.selection = rangeSelection{}
+	m.tree.RefreshFilter(m.annotatedFiles())
+	m.invalidateRenderCaches()
+	m.syncViewportToCursor()
 }
 
 // saveComment persists the annotation text for the explicitly provided target.
@@ -229,6 +261,7 @@ func (m *Model) saveComment(text, fileName string, fileLevel bool, line int, cha
 		m.annot.annotating = false
 		m.annot.fileAnnotating = false
 		m.annot.existingMultiline = ""
+		m.annot.target = nil
 		m.nav.diffCursor = -1 // position cursor on the file annotation line
 		m.tree.RefreshFilter(m.annotatedFiles())
 		m.layout.viewport.SetContent(m.renderDiff())
@@ -259,6 +292,8 @@ func (m *Model) saveComment(text, fileName string, fileLevel bool, line int, cha
 	m.annot.annotating = false
 	m.annot.fileAnnotating = false // defensive hygiene: parity with file-level branch
 	m.annot.existingMultiline = ""
+	m.annot.target = nil
+	m.annot.selection = rangeSelection{}
 	m.tree.RefreshFilter(m.annotatedFiles())
 	// sync scroll so a newly added multi-row annotation stays visible when the
 	// cursor sits near the bottom of the viewport.
@@ -270,6 +305,10 @@ func (m *Model) cancelAnnotation() {
 	m.annot.annotating = false
 	m.annot.fileAnnotating = false
 	m.annot.existingMultiline = ""
+	if m.annot.target != nil && m.annot.target.Scope != annotation.ScopeLine {
+		m.clearSelection()
+	}
+	m.annot.target = nil
 	m.layout.viewport.SetContent(m.renderDiff())
 }
 
@@ -311,10 +350,18 @@ func (m *Model) deleteAnnotation() tea.Cmd {
 	}
 
 	lineNum := m.diffLineNum(dl)
-	if m.store.Delete(m.file.name, lineNum, string(dl.ChangeType)) {
+	deleted := false
+	if m.annot.target != nil && m.annot.target.File == m.file.name &&
+		m.annot.target.Line == lineNum && m.annot.target.Type == string(dl.ChangeType) {
+		deleted = m.store.DeleteExact(*m.annot.target)
+	} else {
+		deleted = m.store.Delete(m.file.name, lineNum, string(dl.ChangeType))
+	}
+	if deleted {
 		m.pendingAnnotJump = nil    // clear before refreshFilter which may trigger file load
 		m.nav.pendingHunkJump = nil // clear before refreshFilter which may trigger file load
 		m.annot.cursorOnAnnotation = false
+		m.annot.target = nil
 		m.tree.RefreshFilter(m.annotatedFiles())
 
 		// if filter moved cursor to a different file, load the new selection
@@ -432,15 +479,22 @@ type annotCacheKey struct {
 // file-level prefix; line-level annotations get the line prefix. returns ("", "")
 // when no annotation matches the key.
 func (m Model) annotationPrefixBody(key string) (prefix, body string) {
+	var comments []string
 	for _, a := range m.store.Get(m.file.name) {
 		if key == annotKeyFile && a.Line == 0 {
-			return m.annotFilePrefix(), a.Comment
+			comments = append(comments, a.Comment)
 		}
 		if key != annotKeyFile && m.annotationKey(a.Line, a.Type) == key {
-			return m.annotPrefix(), a.Comment
+			comments = append(comments, a.Comment)
 		}
 	}
-	return "", ""
+	if len(comments) == 0 {
+		return "", ""
+	}
+	if key == annotKeyFile {
+		return m.annotFilePrefix(), strings.Join(comments, "\n")
+	}
+	return m.annotPrefix(), strings.Join(comments, "\n")
 }
 
 // annotationVisualRows is the single source of truth for how an annotation is

@@ -730,6 +730,9 @@ func (m Model) handleDiffAction(action keymap.Action) (tea.Model, tea.Cmd) {
 }
 
 func (m *Model) handleDiffMovement(action keymap.Action) bool {
+	if m.extendSelectionForAction(action) {
+		return true
+	}
 	switch action {
 	case keymap.ActionDown:
 		m.moveDiffCursorDown()

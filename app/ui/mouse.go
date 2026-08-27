@@ -160,6 +160,17 @@ func (m Model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 
 	zone := m.hitTest(msg.X, msg.Y)
 
+	if msg.Action == tea.MouseActionRelease && m.annot.selection.dragging {
+		m.annot.selection.dragging = false
+		return m, nil
+	}
+	if msg.Action == tea.MouseActionMotion && m.annot.selection.dragging {
+		if zone == hitDiff {
+			return m.dragDiffSelection(msg.Y)
+		}
+		return m, nil
+	}
+
 	switch msg.Button {
 	case tea.MouseButtonWheelUp:
 		if msg.Action != tea.MouseActionPress {
@@ -176,16 +187,19 @@ func (m Model) handleMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 		// stays keyboard-driven so users keep a single mental model.
 		return m, nil
 	case tea.MouseButtonLeft:
-		if msg.Action != tea.MouseActionPress {
-			return m, nil // ignore release and motion while holding
-		}
-		switch zone {
-		case hitTree:
-			return m.clickTree(msg.Y)
-		case hitDiff:
-			return m.clickDiff(msg.Y)
-		case hitNone, hitStatus, hitHeader:
+		switch msg.Action {
+		case tea.MouseActionRelease:
+			m.annot.selection.dragging = false
 			return m, nil
+		case tea.MouseActionPress:
+			switch zone {
+			case hitTree:
+				return m.clickTree(msg.Y)
+			case hitDiff:
+				return m.pressDiffSelection(msg.Y)
+			case hitNone, hitStatus, hitHeader:
+				return m, nil
+			}
 		}
 		return m, nil
 	default:
@@ -472,6 +486,39 @@ func (m *Model) pinDiffCursorTo(newOffset int) bool {
 // under the pointer. when the click lands on an injected annotation
 // sub-row, cursorOnAnnotation is set so subsequent navigation treats the
 // cursor as being on the annotation rather than the diff line above it.
+func (m Model) pressDiffSelection(y int) (tea.Model, tea.Cmd) {
+	model, cmd := m.clickDiff(y)
+	m = model.(Model)
+	if !m.validSelectionRow(m.nav.diffCursor) {
+		return m, cmd
+	}
+	m.annot.selection.dragging = true
+	m.annot.selection.dragAnchor = m.nav.diffCursor
+	return m, cmd
+}
+
+func (m Model) dragDiffSelection(y int) (tea.Model, tea.Cmd) {
+	row := (y - m.diffTopRow()) + m.layout.viewport.YOffset
+	idx, onAnnot := m.visualRowToDiffLine(row)
+	if onAnnot || !m.validSelectionRow(idx) {
+		return m, nil
+	}
+	anchorRange, ok := m.hunkRangeAt(m.annot.selection.dragAnchor)
+	if !ok || idx < anchorRange.start || idx >= anchorRange.end {
+		m.output.hint = "Selection stays within the current hunk"
+		return m, nil
+	}
+	m.annot.selection.active = true
+	m.annot.selection.anchor = m.annot.selection.dragAnchor
+	m.annot.selection.end = idx
+	m.nav.diffCursor = idx
+	m.annot.cursorOnAnnotation = false
+	m.layout.focus = paneDiff
+	m.invalidateRenderCaches()
+	m.syncViewportToCursor()
+	return m, nil
+}
+
 func (m Model) clickDiff(y int) (tea.Model, tea.Cmd) {
 	if m.file.name == "" {
 		return m, nil // no file loaded — nothing to focus or point at

@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- annotate contiguous ranges and whole hunks with scoped old/new coordinates and clean diff excerpts
+
 ## v1.12.0 - 2026-08-04
 
 ### New Features

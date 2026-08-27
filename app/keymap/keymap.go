@@ -40,6 +40,8 @@ const (
 	ActionNextHunk         Action = "next_hunk"
 	ActionPrevHunk         Action = "prev_hunk"
 	ActionCopyHunk         Action = "copy_hunk"
+	ActionAnnotateHunk     Action = "annotate_hunk"
+	ActionSelectRange      Action = "select_range"
 	ActionTogglePane       Action = "toggle_pane"
 	ActionFocusTree        Action = "focus_tree"
 	ActionFocusDiff        Action = "focus_diff"
@@ -86,9 +88,9 @@ var validActions = map[Action]bool{
 	ActionScrollCenter: true, ActionScrollTop: true, ActionScrollBottom: true,
 	ActionScrollDiffDown: true, ActionScrollDiffUp: true,
 	ActionNextItem: true, ActionPrevItem: true, ActionJumpFile: true,
-	ActionNextHunk: true, ActionPrevHunk: true, ActionCopyHunk: true,
+	ActionNextHunk: true, ActionPrevHunk: true, ActionCopyHunk: true, ActionAnnotateHunk: true,
 	ActionTogglePane: true, ActionFocusTree: true, ActionFocusDiff: true,
-	ActionSearch:  true,
+	ActionSearch: true, ActionSelectRange: true,
 	ActionConfirm: true, ActionAnnotateFile: true, ActionDeleteAnnotation: true, ActionAnnotList: true,
 	ActionNextAnnotation: true, ActionPrevAnnotation: true,
 	ActionToggleCollapsed: true, ActionToggleCompact: true, ActionToggleWrap: true, ActionToggleTree: true,
@@ -212,6 +214,7 @@ func defaultDescriptions() []HelpEntry {
 		{ActionNextHunk, "next hunk", "File/Hunk"},
 		{ActionPrevHunk, "prev hunk", "File/Hunk"},
 		{ActionCopyHunk, "copy current diff hunk", "File/Hunk"},
+		{ActionAnnotateHunk, "annotate current diff hunk", "File/Hunk"},
 		{ActionOpenFileInEditor, "open focused file in $EDITOR", "File/Hunk"},
 
 		// pane
@@ -223,7 +226,8 @@ func defaultDescriptions() []HelpEntry {
 		{ActionSearch, "search in diff", "Search"},
 
 		// annotations
-		{ActionConfirm, "annotate line / select file", "Annotations"},
+		{ActionSelectRange, "start range selection", "Annotations"},
+		{ActionConfirm, "annotate line or selection / select file", "Annotations"},
 		{ActionAnnotateFile, "annotate file", "Annotations"},
 		{ActionDeleteAnnotation, "delete annotation", "Annotations"},
 		{ActionAnnotList, "annotation list", "Annotations"},
@@ -282,6 +286,7 @@ func defaultBindings() map[string]Action {
 		"]":      ActionNextHunk,
 		"[":      ActionPrevHunk,
 		"Y":      ActionCopyHunk,
+		"c":      ActionAnnotateHunk,
 		"e":      ActionOpenFileInEditor,
 		"tab":    ActionTogglePane,
 		"h":      ActionFocusTree,
@@ -305,7 +310,8 @@ func defaultBindings() map[string]Action {
 		"B":      ActionToggleBlame,
 		"W":      ActionToggleWordDiff,
 		".":      ActionToggleHunk,
-		" ":      ActionMarkReviewed,
+		" ":      ActionSelectRange,
+		"m":      ActionMarkReviewed,
 		"F":      ActionFilterUnreviewed,
 		"u":      ActionToggleUntracked,
 		"f":      ActionFilter,

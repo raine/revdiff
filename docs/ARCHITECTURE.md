@@ -151,6 +151,9 @@ across files by concern to keep files under ~500 lines:
   chokepoint: `annotationVisualRows` is the single source of truth for "how many rows + what content
   does this annotation paint as." Memoized on `annot.rowCache`, invalidated by `handleFileLoaded`,
   `applyTheme`, and `cancelThemeSelect`
+- **`selection.go`** - contiguous range selection and whole-hunk annotation targets. Selections are
+  restricted to added and removed rows in one canonical hunk, extend through keyboard movement or
+  left drag, and produce scoped annotations with old/new coordinates and clean source excerpts
 - **`annotlist.go`** — annotation list spec building, cross-file jump logic
   (`jumpToAnnotationTarget` for the `@` popup, `tryJumpToAnnotationTarget` returning a jumped-bool
   for the `}`/`{` walker)
@@ -170,9 +173,10 @@ across files by concern to keep files under ~500 lines:
   visible-order/filter ownership to `FileTreeComponent` and loading to the guarded file loader
 - **`search.go`** — search input handling, match computation, navigation
 - **`mouse.go`** — mouse event routing: `handleMouse` dispatch, `hitTest` pane classification
-  (`hitZone`), wheel/left-click helpers (`clickTree`, `clickDiff`), layout helpers
-  (`statusBarHeight`, `diffTopRow`, `treeTopRow`). Diff-pane wheel events defer both the cursor pin
-  and the `SetContent(renderDiff())` call via a single in-flight `tea.Tick(wheelRenderDelay)`
+  (`hitZone`), wheel/left-click helpers (`clickTree`, `clickDiff`), range drag lifecycle, layout
+  helpers (`statusBarHeight`, `diffTopRow`, `treeTopRow`). Diff-pane wheel events defer both
+  the cursor pin and the `SetContent(renderDiff())` call via a single in-flight
+  `tea.Tick(wheelRenderDelay)`
   debounce (issue #179) — `wheelState.tickInFlight` ensures one tick at a time across an entire
   burst (subsequent wheels just bump `gen`); stale ticks reschedule, matching ticks flush.
   `flushWheelPending()` is called from `handleWheelDebounce`, `handleKey`, `handleResize`, and
@@ -195,8 +199,9 @@ Each source file has a matching `_test.go`.
 - **`navigationState` (`m.nav`)** — cursor position: `diffCursor`, `pendingHunkJump`
 - **`searchState` (`m.search`)** — search lifecycle: `active`, `term`, `matches`, `cursor`, `input`,
   `matchSet`, `history`, `historyIdx`
-- **`annotationState` (`m.annot`)** — annotation input lifecycle and visual-row cache: `annotating`,
-  `fileAnnotating`, `cursorOnAnnotation`, `input`, `rowCache`
+- **`annotationState` (`m.annot`)** - annotation input lifecycle, scoped target, contiguous selection,
+  and visual-row cache: `annotating`, `fileAnnotating`, `cursorOnAnnotation`, `target`, `selection`,
+  `input`, `rowCache`
 - **`wheelState` (`m.wheel`)** — diff-pane wheel coalescing (issue #179): `gen`, `renderPending`,
   `tickInFlight`
 
@@ -356,9 +361,13 @@ key to struct field mapping.
 
 ### app/annotation/ — annotation store
 
-In-memory store for annotations. Each `Annotation` has file, line, text, and optional `EndLine` for
-hunk range headers (triggered when comment contains "hunk" keyword). Structured output formatting
-for export. `FormatOutput` escapes body lines that start with `## ` (with trailing space, matching
+In-memory store for annotations. Each `Annotation` supports legacy file, line, and same-side range
+identity plus scoped range or hunk identity. Scoped records carry old/new start and count fields and
+an ordered excerpt of clean `-` and `+` source rows. `FormatOutput` emits scoped headers as
+`## path @@ -OLD_START,OLD_COUNT +NEW_START,NEW_COUNT @@ (range|hunk)`, followed by the excerpt, a
+blank separator, and the comment. Legacy records retain their existing output forms, including the
+same-side range produced when a line comment contains the whole word "hunk". `FormatOutput` escapes
+body lines that start with `## ` (with trailing space, matching
 the record-header form) by prefixing a single space so downstream parsers cannot confuse a comment
 line for a new record header. Lines starting with `###` or `##` without a space are left unchanged.
 `WriteFile(path)` formats once via `FormatOutput`, persists atomically by delegating to
@@ -538,9 +547,16 @@ be independently toggled.
 ### Annotation Flow
 
 ```
-User presses 'a' on diff line
+User presses Space on an added/removed diff row
+  → selection anchor and end start on that row
+  → movement or left drag extends within the canonical hunk; mouse release preserves selection
+  → 'a' / Enter → scoped range target, annotating = true, annotateInput focused
+  → Esc before input → clear selection
+User presses 'c' on an added/removed diff row
+  → canonical hunk becomes a scoped hunk target, annotating = true, annotateInput focused
+User presses 'a' on a diff line without a selection
   → annotating = true, annotateInput focused
-  → Enter → store.Add(file, line, text)  (single-line fast path)
+  → Enter → store.Add(annotation target with text)
   → Ctrl+E → openEditor()
       → editor.Editor.Command(seed)     (app/editor)
       → tea.ExecProcess(cmd, complete)  (suspends bubbletea, hands over tty)
@@ -554,6 +570,7 @@ User presses 'a' on diff line
   → 'Y' (copy_hunk): canonical hunk range → relative path + prefixed source rows → Clipboard.Copy(content)
   → 'O' (flush_output, requires --output): store.WriteFile(path) → atomic write, revdiff stays open (annotate → flush → hand to agent → 'R' reload loop)
       → optional PostFlushHook.Prepare(snapshot) → tea.ExecProcess → command reads snapshot from stdin
+  → scoped save captures old/new coordinates and ordered clean +/- excerpt rows
   → on quit: store.FormatOutput() → structured output to stdout/file (file branch uses store.WriteFile)
   → (optional) history.Save() → markdown to ~/.config/revdiff/history/ (best-effort warnings only)
   → if --exit-code-on-annotations is enabled and output is non-empty: exit 10

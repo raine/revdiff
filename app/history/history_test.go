@@ -538,3 +538,12 @@ func TestSave_DiffUsesLiteralPathspec(t *testing.T) {
 	assert.Contains(t, entries[0], "magic changed")
 	assert.NotContains(t, entries[0], "decoy changed")
 }
+
+func TestSave_PreservesScopedAnnotationSnapshot(t *testing.T) {
+	histDir := t.TempDir()
+	annotations := "## a.go @@ -4,1 +4,1 @@ (range)\n-old\n+new\n\nreplace\n"
+	New(histDir).Save(Params{Annotations: annotations, Path: "/some/project"})
+	entries := readHistoryFiles(t, histDir)
+	require.Len(t, entries, 1)
+	assert.Contains(t, entries[0], "## Annotations\n\n"+annotations)
+}

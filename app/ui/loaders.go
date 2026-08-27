@@ -527,6 +527,8 @@ func (m Model) handleFileLoaded(msg fileLoadedMsg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	m.file.requestedPath = ""
+	m.annot.selection = rangeSelection{}
+	m.annot.target = nil
 	if msg.err != nil {
 		m.layout.viewport.SetContent(fmt.Sprintf("error loading diff: %v", msg.err))
 		return m, nil

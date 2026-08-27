@@ -1565,3 +1565,93 @@ func TestModel_HandleBlameLoaded_FlushesPendingWheelBeforeSync(t *testing.T) {
 	assert.False(t, model.wheel.tickInFlight, "handleBlameLoaded flush must also clear tickInFlight")
 	assert.Equal(t, wheelStep, model.nav.diffCursor, "cursor must be pinned to viewport top by the pre-blame flush")
 }
+
+func TestModel_HandleMouse_DragSelectsUnderlyingDiffRows(t *testing.T) {
+	lines := selectionFixture()
+	m := mouseTestModel(t, []string{"a.go"}, map[string][]diff.DiffLine{"a.go": lines})
+	m.file.lines = lines
+	m.layout.viewport.SetContent(m.renderDiff())
+
+	result, _ := m.Update(leftPressAt(60, m.diffTopRow()+1))
+	m = result.(Model)
+	assert.True(t, m.annot.selection.dragging)
+	assert.False(t, m.annot.selection.active, "a click alone only positions the cursor")
+
+	motion := tea.MouseMsg(tea.MouseEvent{X: 60, Y: m.diffTopRow() + 4, Button: tea.MouseButtonLeft, Action: tea.MouseActionMotion})
+	result, _ = m.Update(motion)
+	m = result.(Model)
+	require.True(t, m.annot.selection.active)
+	assert.Equal(t, 1, m.annot.selection.anchor)
+	assert.Equal(t, 4, m.annot.selection.end)
+
+	release := tea.MouseMsg(tea.MouseEvent{X: 60, Y: m.diffTopRow() + 4, Button: tea.MouseButtonNone, Action: tea.MouseActionRelease})
+	result, _ = m.Update(release)
+	m = result.(Model)
+	assert.False(t, m.annot.selection.dragging)
+	assert.True(t, m.annot.selection.active, "release preserves the selected range")
+}
+
+func TestModel_HandleMouse_ClickPreservesActiveSelection(t *testing.T) {
+	m := mouseTestModel(t, []string{"a.go"}, map[string][]diff.DiffLine{"a.go": selectionFixture()})
+	m.file.lines = selectionFixture()
+	m.layout.viewport.SetContent(m.renderDiff())
+	m.annot.selection = rangeSelection{active: true, anchor: 1, end: 3}
+
+	result, _ := m.Update(leftPressAt(60, m.diffTopRow()+4))
+	m = result.(Model)
+	release := tea.MouseMsg(tea.MouseEvent{X: 60, Y: m.diffTopRow() + 4, Button: tea.MouseButtonNone, Action: tea.MouseActionRelease})
+	result, _ = m.Update(release)
+	m = result.(Model)
+	assert.True(t, m.annot.selection.active)
+	assert.Equal(t, 1, m.annot.selection.anchor)
+	assert.Equal(t, 3, m.annot.selection.end)
+}
+
+func TestModel_HandleMouse_DragUsesViewportOffsetAndRejectsOtherHunk(t *testing.T) {
+	lines := append([]diff.DiffLine(nil), selectionFixture()...)
+	m := mouseTestModel(t, []string{"a.go"}, map[string][]diff.DiffLine{"a.go": lines})
+	m.file.lines = lines
+	m.layout.viewport = viewport.New(80, 3)
+	m.layout.viewport.SetContent(m.renderDiff())
+	m.layout.viewport.SetYOffset(1)
+
+	result, _ := m.Update(leftPressAt(60, m.diffTopRow()))
+	m = result.(Model)
+	assert.Equal(t, 1, m.annot.selection.dragAnchor)
+	motion := tea.MouseMsg(tea.MouseEvent{X: 60, Y: m.diffTopRow() + 2, Button: tea.MouseButtonLeft, Action: tea.MouseActionMotion})
+	result, _ = m.Update(motion)
+	m = result.(Model)
+	assert.Equal(t, 3, m.annot.selection.end, "drag mapping includes viewport offset")
+
+	m.layout.viewport = viewport.New(80, 10)
+	m.layout.viewport.SetContent(m.renderDiff())
+	motion = tea.MouseMsg(tea.MouseEvent{X: 60, Y: m.diffTopRow() + 6, Button: tea.MouseButtonLeft, Action: tea.MouseActionMotion})
+	result, _ = m.Update(motion)
+	m = result.(Model)
+	assert.Equal(t, 3, m.annot.selection.end, "drag cannot cross a canonical hunk boundary")
+	assert.Contains(t, m.output.hint, "current hunk")
+}
+
+func TestModel_HandleMouse_DragMapsWrappedRows(t *testing.T) {
+	lines := []diff.DiffLine{
+		{OldNum: 1, Content: strings.Repeat("old ", 30), ChangeType: diff.ChangeRemove},
+		{NewNum: 1, Content: "new", ChangeType: diff.ChangeAdd},
+	}
+	m := mouseTestModel(t, []string{"a.go"}, map[string][]diff.DiffLine{"a.go": lines})
+	m.file.lines = lines
+	m.layout.treeHidden = true
+	m.layout.width = 30
+	m.layout.viewport = viewport.New(26, 20)
+	m.modes.wrap = true
+	m.layout.viewport.SetContent(m.renderDiff())
+	firstHeight := m.wrappedLineCount(0)
+	require.Greater(t, firstHeight, 1)
+
+	result, _ := m.Update(leftPressAt(10, m.diffTopRow()))
+	m = result.(Model)
+	motion := tea.MouseMsg(tea.MouseEvent{X: 10, Y: m.diffTopRow() + firstHeight, Button: tea.MouseButtonLeft, Action: tea.MouseActionMotion})
+	result, _ = m.Update(motion)
+	m = result.(Model)
+	assert.True(t, m.annot.selection.active)
+	assert.Equal(t, 1, m.annot.selection.end, "wrapped visual rows map to the next underlying DiffLine")
+}

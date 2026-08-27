@@ -9,13 +9,35 @@ import (
 	"github.com/umputun/revdiff/app/fsutil"
 )
 
-// Annotation represents a user comment on a specific diff line.
+// Scope identifies the source span represented by an annotation.
+type Scope string
+
+const (
+	ScopeLine  Scope = ""
+	ScopeRange Scope = "range"
+	ScopeHunk  Scope = "hunk"
+)
+
+// ExcerptLine is one clean source row in a range or hunk annotation.
+type ExcerptLine struct {
+	Type    string // "+" or "-"
+	Content string
+}
+
+// Annotation represents a user comment on a file or source span.
 type Annotation struct {
 	File    string // file path relative to repo root
-	Line    int    // line number in the diff
-	EndLine int    // end line of hunk range, 0 means no range
-	Type    string // change type: "+", "-", or " "
+	Line    int    // anchor line used for display and navigation
+	EndLine int    // legacy same-side range end, 0 means no legacy range
+	Type    string // anchor change type: "+", "-", or " "
 	Comment string // user comment text
+
+	Scope    Scope
+	OldStart int
+	OldCount int
+	NewStart int
+	NewCount int
+	Excerpt  []ExcerptLine
 }
 
 // Store holds annotations in memory, keyed by filename.
@@ -23,63 +45,90 @@ type Store struct {
 	annotations map[string][]Annotation
 }
 
-// NewStore creates a new empty annotation store.
-func NewStore() *Store {
-	return &Store{annotations: make(map[string][]Annotation)}
-}
+// NewStore creates an empty annotation store.
+func NewStore() *Store { return &Store{annotations: make(map[string][]Annotation)} }
 
-// Add adds an annotation for the given file and line.
-// If an annotation already exists at the same file:line, it is replaced.
+// Add inserts an annotation or replaces one with the same scope identity.
 func (s *Store) Add(a Annotation) {
 	existing := s.annotations[a.File]
-	if i, ok := s.find(a.File, a.Line, a.Type); ok {
-		existing[i].Comment = a.Comment
-		existing[i].EndLine = a.EndLine
+	if i, ok := s.findExact(a); ok {
+		existing[i] = a
 		return
 	}
 	s.annotations[a.File] = append(existing, a)
 }
 
-// Delete removes the annotation at the given file, line and change type.
-// Returns true if an annotation was found and removed.
+// Delete removes the first annotation anchored at file, line, and change type.
+// DeleteExact should be used when the caller has a complete annotation identity.
 func (s *Store) Delete(file string, line int, changeType string) bool {
-	i, ok := s.find(file, line, changeType)
+	for _, a := range s.annotations[file] {
+		if a.Line == line && a.Type == changeType {
+			return s.DeleteExact(a)
+		}
+	}
+	return false
+}
+
+// DeleteExact removes the annotation with the same scope identity as a.
+func (s *Store) DeleteExact(a Annotation) bool {
+	i, ok := s.findExact(a)
 	if !ok {
 		return false
 	}
-	existing := s.annotations[file]
-	s.annotations[file] = append(existing[:i], existing[i+1:]...)
-	if len(s.annotations[file]) == 0 {
-		delete(s.annotations, file)
+	existing := s.annotations[a.File]
+	s.annotations[a.File] = append(existing[:i], existing[i+1:]...)
+	if len(s.annotations[a.File]) == 0 {
+		delete(s.annotations, a.File)
 	}
 	return true
 }
 
-// Has checks if an annotation exists at the given file, line and change type.
+// Has reports whether any annotation is anchored at file, line, and change type.
 func (s *Store) Has(file string, line int, changeType string) bool {
-	_, ok := s.find(file, line, changeType)
-	return ok
+	for _, a := range s.annotations[file] {
+		if a.Line == line && a.Type == changeType {
+			return true
+		}
+	}
+	return false
 }
 
-// find returns the index of an annotation matching file, line, and changeType.
-func (s *Store) find(file string, line int, changeType string) (int, bool) {
-	for i, a := range s.annotations[file] {
-		if a.Line == line && a.Type == changeType {
+func (s *Store) findExact(a Annotation) (int, bool) {
+	for i, existing := range s.annotations[a.File] {
+		if sameIdentity(existing, a) {
 			return i, true
 		}
 	}
 	return 0, false
 }
 
-// Get returns all annotations for the given file, sorted by line number.
+func sameIdentity(a, b Annotation) bool {
+	if a.File != b.File || a.Scope != b.Scope {
+		return false
+	}
+	if a.Scope == ScopeLine {
+		return a.Line == b.Line && a.Type == b.Type
+	}
+	return a.OldStart == b.OldStart && a.OldCount == b.OldCount &&
+		a.NewStart == b.NewStart && a.NewCount == b.NewCount
+}
+
+// Get returns annotations for file in stable source and scope order.
 func (s *Store) Get(file string) []Annotation {
-	result := make([]Annotation, len(s.annotations[file]))
-	copy(result, s.annotations[file])
-	sort.Slice(result, func(i, j int) bool { return result[i].Line < result[j].Line })
+	result := append([]Annotation(nil), s.annotations[file]...)
+	sort.SliceStable(result, func(i, j int) bool {
+		if result[i].Line != result[j].Line {
+			return result[i].Line < result[j].Line
+		}
+		if result[i].Type != result[j].Type {
+			return result[i].Type < result[j].Type
+		}
+		return result[i].Scope < result[j].Scope
+	})
 	return result
 }
 
-// Count returns the total number of annotations across all files.
+// Count returns the number of stored annotations.
 func (s *Store) Count() int {
 	count := 0
 	for _, anns := range s.annotations {
@@ -88,24 +137,19 @@ func (s *Store) Count() int {
 	return count
 }
 
-// Clear removes all annotations from the store.
-func (s *Store) Clear() {
-	s.annotations = make(map[string][]Annotation)
-}
+// Clear removes every annotation.
+func (s *Store) Clear() { s.annotations = make(map[string][]Annotation) }
 
-// All returns all annotations grouped by file. The returned map is a copy.
+// All returns a sorted copy of the annotations grouped by file.
 func (s *Store) All() map[string][]Annotation {
 	result := make(map[string][]Annotation, len(s.annotations))
-	for file, anns := range s.annotations {
-		copied := make([]Annotation, len(anns))
-		copy(copied, anns)
-		sort.Slice(copied, func(i, j int) bool { return copied[i].Line < copied[j].Line })
-		result[file] = copied
+	for file := range s.annotations {
+		result[file] = s.Get(file)
 	}
 	return result
 }
 
-// Files returns the list of files that have annotations, sorted alphabetically.
+// Files returns annotated file paths in alphabetical order.
 func (s *Store) Files() []string {
 	files := make([]string, 0, len(s.annotations))
 	for file := range s.annotations {
@@ -115,11 +159,7 @@ func (s *Store) Files() []string {
 	return files
 }
 
-// Load parses markdown produced by FormatOutput from r and adds each recovered
-// annotation via Add (so duplicate file/line/type pairs apply last-write-wins).
-// It is the symmetric inverse of FormatOutput on the API surface; callers that
-// need to filter records (e.g. drop orphans against a diff) should use Parse
-// directly and Add the survivors themselves.
+// Load parses and adds annotations from canonical structured output.
 func (s *Store) Load(r io.Reader) error {
 	records, err := Parse(r)
 	if err != nil {
@@ -131,36 +171,34 @@ func (s *Store) Load(r io.Reader) error {
 	return nil
 }
 
-// FormatOutput produces the structured output format for stdout.
-// Files are sorted alphabetically, annotations within each file by line number.
-// Returns empty string if no annotations exist.
-//
-// Body lines that start with "## " (the record-header form) are prefixed with a
-// single space on output so parsers that split on "## " record headers cannot
-// mistake a comment line for a new record. The added space is cosmetic
-// (markdown renderers treat leading whitespace before a heading marker as
-// paragraph text) and preserves the original text when whitespace is trimmed
-// per line. Other markdown heading forms like "### subheader" are not escaped.
+// FormatOutput produces the canonical structured annotation format.
 func (s *Store) FormatOutput() string {
 	if len(s.annotations) == 0 {
 		return ""
 	}
-
-	files := s.Files()
-
 	var buf strings.Builder
 	first := true
-	for _, file := range files {
-		anns := s.Get(file) // sorted by line: file-level (0) first, then ascending
-		for _, a := range anns {
+	for _, file := range s.Files() {
+		for _, a := range s.Get(file) {
 			if !first {
-				buf.WriteString("\n")
+				buf.WriteByte('\n')
 			}
 			first = false
 			body := s.escapeHeaderLines(a.Comment)
 			switch {
 			case a.Line == 0:
 				fmt.Fprintf(&buf, "## %s (file-level)\n%s\n", a.File, body)
+			case a.Scope == ScopeRange || a.Scope == ScopeHunk:
+				fmt.Fprintf(&buf, "## %s @@ -%d,%d +%d,%d @@ (%s)\n", a.File,
+					a.OldStart, a.OldCount, a.NewStart, a.NewCount, a.Scope)
+				for _, line := range a.Excerpt {
+					buf.WriteString(line.Type)
+					buf.WriteString(line.Content)
+					buf.WriteByte('\n')
+				}
+				buf.WriteByte('\n')
+				buf.WriteString(body)
+				buf.WriteByte('\n')
 			case a.EndLine > 0:
 				fmt.Fprintf(&buf, "## %s:%d-%d (%s)\n%s\n", a.File, a.Line, a.EndLine, a.Type, body)
 			default:
@@ -171,9 +209,7 @@ func (s *Store) FormatOutput() string {
 	return buf.String()
 }
 
-// WriteFile writes FormatOutput to path atomically (temp file + rename, mode
-// 0o600) and returns the exact snapshot written, so a concurrent reader sees
-// either the old or the new complete file, never a truncated one.
+// WriteFile atomically writes FormatOutput and returns the written snapshot.
 func (s *Store) WriteFile(path string) (string, error) {
 	content := s.FormatOutput()
 	if err := fsutil.AtomicWriteFile(path, []byte(content)); err != nil {
@@ -182,12 +218,6 @@ func (s *Store) WriteFile(path string) (string, error) {
 	return content, nil
 }
 
-// escapeHeaderLines prefixes any body line whose first non-space content is
-// "## " with a single extra space. The parser inverts this by stripping one
-// leading space from any body line that, after left-trimming, begins with
-// "## ". Escaping pre-indented variants (e.g. " ## ") keeps the round-trip
-// symmetric for arbitrary user content. Other heading forms like "### " are
-// not escaped since they cannot collide with the record-header split marker.
 func (s *Store) escapeHeaderLines(body string) string {
 	if !strings.Contains(body, "## ") {
 		return body

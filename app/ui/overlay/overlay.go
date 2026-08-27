@@ -104,6 +104,11 @@ type AnnotationTarget struct {
 	File       string
 	ChangeType string
 	Line       int
+	Scope      string
+	OldStart   int
+	OldCount   int
+	NewStart   int
+	NewCount   int
 }
 
 // ThemeSelectSpec describes the theme selector popup content.

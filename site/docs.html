@@ -529,7 +529,7 @@ color-border = #6272a4
                 <tr><td><code>Ctrl+d/Ctrl+u</code></td><td>Half-page scroll</td></tr>
                 <tr><td><code>J/K</code></td><td>Scroll diff viewport (works from either pane)</td></tr>
                 <tr><td><code>Home/End</code></td><td>Jump to first/last item</td></tr>
-                <tr><td><code>Enter</code></td><td>Switch to diff (tree) / annotate (diff)</td></tr>
+                <tr><td><code>Enter</code></td><td>Switch to diff (tree) / annotate current line or selection (diff)</td></tr>
                 <tr><td><code>n/p</code></td><td>Next/prev changed file or TOC header</td></tr>
                 <tr><td><code>P</code></td><td>Open the file picker</td></tr>
                 <tr><td><code>[</code> / <code>]</code></td><td>Jump to prev/next change hunk; with <code>--cross-file-hunks</code>, continues to prev/next file at the boundary</td></tr>
@@ -561,7 +561,10 @@ color-border = #6272a4
         <table>
             <thead><tr><th>Key</th><th>Action</th></tr></thead>
             <tbody>
-                <tr><td><code>a</code> or <code>Enter</code></td><td>Annotate current line</td></tr>
+                <tr><td><code>Space</code></td><td>Start a contiguous range on an added or removed row</td></tr>
+                <tr><td><code>a</code> or <code>Enter</code></td><td>Annotate current line or selection</td></tr>
+                <tr><td><code>c</code></td><td>Annotate the whole canonical hunk</td></tr>
+                <tr><td><code>m</code></td><td>Mark the focused file reviewed</td></tr>
                 <tr><td><code>A</code></td><td>Add file-level annotation</td></tr>
                 <tr><td><code>@</code></td><td>Toggle annotation list popup</td></tr>
                 <tr><td><code>}</code> / <code>{</code></td><td>Jump to next/previous annotation (always crosses file boundaries; silent no-op at the first/last annotation)</td></tr>
@@ -569,9 +572,10 @@ color-border = #6272a4
                 <tr><td><code>y</code></td><td>Copy all current annotations to the terminal clipboard</td></tr>
                 <tr><td><code>O</code></td><td>Flush annotations to the <code>--output</code> file without exiting (requires <code>-o</code>)</td></tr>
                 <tr><td><code>Ctrl+E</code></td><td>Open <code>$EDITOR</code> for multi-line annotation (<code>open_editor</code> &mdash; rebindable, during annotation input)</td></tr>
-                <tr><td><code>Esc</code></td><td>Cancel annotation input</td></tr>
+                <tr><td><code>Esc</code></td><td>Cancel range selection or annotation input</td></tr>
             </tbody>
         </table>
+        <p>Press <code>Space</code> on an added or removed row to start a contiguous range. Movement keys extend the selection in either direction and keep it within the canonical hunk. Press <code>a</code> or <code>Enter</code> to annotate the selected rows, or <code>Esc</code> to cancel. A left-button drag across added and removed rows creates the same selection, and releasing the button preserves it for <code>a</code> or <code>Enter</code>. Press <code>c</code> on an added or removed row to annotate the whole canonical hunk directly.</p>
         <p>While the annotation input is active, press <code>Ctrl+E</code> (or whatever key is bound to <code>open_editor</code>) to hand off the current text to an external editor for multi-line comments. Editor resolution: <code>$EDITOR</code> &rarr; <code>$VISUAL</code> &rarr; <code>vi</code>. Values with arguments work (e.g. <code>EDITOR="code --wait"</code>). On editor save and quit, the full file contents (including newlines) become the annotation. Quitting the editor with an empty file cancels the annotation and preserves any previously stored note on that line. Multi-line annotations are rendered line-by-line in the diff view, shown flattened in the annotation list popup (<code>@</code>), and emitted with embedded newlines in the structured output.</p>
         <p>Press <code>e</code> in the diff pane to open the focused file in <code>$EDITOR</code> (<code>open_file_in_editor</code> &mdash; rebindable) when revdiff has a stable source path. Editor resolution is the same <code>$EDITOR</code> &rarr; <code>$VISUAL</code> &rarr; <code>vi</code> chain. Known editors receive either <code>$EDITOR +N path</code> or <code>$EDITOR --goto path:N</code> as appropriate; unknown editors receive only the file path. File lines are resolved on a best-effort basis. For working tree changes, a clean editor exit reloads the displayed file. For <code>--staged</code> or refs, a clean editor exit returns to revdiff without reloading the displayed diff. In compare mode, <code>e</code> opens the <code>--compare-new</code> side. Working tree files with line annotations cannot be opened for editing because edits can orphan those annotations. Diffs read with <code>--stdin</code> do not support opening files. Unsupported rows or files and editor errors show a status hint instead of launching an editor or changing the diff.</p>
         <p>Press <code>y</code> to copy every current annotation to the terminal clipboard (<code>copy_annotations</code>, rebindable). The copied text is the same complete structured snapshot emitted on graceful quit, including annotations across all files. Copying keeps revdiff open and leaves the annotation store unchanged. revdiff sends the snapshot with OSC 52, which works through local terminals and SSH when the terminal permits clipboard access. GNU screen receives a passthrough sequence, and tmux handles the OSC 52 request through its <code>set-clipboard</code> setting. Snapshots larger than 100,000 bytes fail with a status hint rather than sending a sequence. OSC 52 does not acknowledge whether the terminal accepted the clipboard update.</p>
@@ -582,7 +586,7 @@ data=$(base64 | tr -d '\n')
 printf '\033]52;c;%s\007' "$data" > /dev/tty</code></div>
         <p>After making the script executable, run revdiff with <code>--post-flush-command=osc-copy</code> or set <code>post-flush-command = osc-copy</code> in the config file. This workflow couples clipboard delivery or another custom command to each explicit <code>O</code> file flush.</p>
         <p>The post-flush command runs synchronously. Use a fast, non-interactive command because revdiff waits for it to finish before restoring the TUI.</p>
-        <p>Press <code>Space</code> to mark the focused file reviewed. On <code>R</code> reload, revdiff keeps the mark only when the file's effective text diff is unchanged; rebases that only shift line numbers or surrounding context keep it, while changed or removed files lose it. Binary files and opaque placeholders are conservatively unmarked on reload because their rendered diff does not expose enough content to prove they are unchanged.</p>
+        <p>Press <code>m</code> to mark the focused file reviewed. On <code>R</code> reload, revdiff keeps the mark only when the file's effective text diff is unchanged; rebases that only shift line numbers or surrounding context keep it, while changed or removed files lose it. Binary files and opaque placeholders are conservatively unmarked on reload because their rendered diff does not expose enough content to prove they are unchanged.</p>
 
         <h2 id="view">View toggles</h2>
         <table>
@@ -620,7 +624,7 @@ printf '\033]52;c;%s\007' "$data" > /dev/tty</code></div>
                 <tr><td><code>#</code></td><td><code>L</code></td><td>Line numbers visible in gutter</td></tr>
                 <tr><td><code>b</code></td><td><code>B</code></td><td>Blame gutter visible</td></tr>
                 <tr><td><code>±</code></td><td><code>W</code></td><td>Intra-line word-diff highlighting</td></tr>
-                <tr><td><code>✓</code></td><td><code>Space</code></td><td>Reviewed count (revalidated on reload)</td></tr>
+                <tr><td><code>✓</code></td><td><code>m</code></td><td>Reviewed count (revalidated on reload)</td></tr>
                 <tr><td><code>∅</code></td><td><code>u</code></td><td>Untracked files visible in tree</td></tr>
             </tbody>
         </table>
@@ -632,7 +636,7 @@ printf '\033]52;c;%s\007' "$data" > /dev/tty</code></div>
             <li><strong>Scroll wheel</strong> &mdash; scrolls whichever pane the cursor is over. In the tree/TOC pane the wheel moves the cursor one entry per notch (matches <code>j</code>/<code>k</code>). In the diff pane the wheel scrolls the viewport by three lines per notch &mdash; the diff cursor stays on its current logical line and is pinned to the visible edge if scrolling pushes it off-screen.</li>
             <li><strong>Shift+scroll</strong> &mdash; half-page scroll in the diff pane. In the tree/TOC pane Shift+wheel behaves the same as plain wheel (one entry per notch &mdash; no page step).</li>
             <li><strong>Left-click in the tree</strong> &mdash; focuses the tree and selects/loads the clicked entry (same as pressing <code>j</code>/<code>k</code> to land there). Clicking a directory row moves the cursor but does not load a file.</li>
-            <li><strong>Left-click in the diff</strong> &mdash; focuses the diff and moves the cursor to the clicked line. Enables a &ldquo;click, then <code>a</code>&rdquo; annotation flow.</li>
+            <li><strong>Left-click or left drag in the diff</strong> &mdash; focuses the diff and moves the cursor to an added or removed row. Dragging selects a contiguous range within its canonical hunk; release preserves the selection for <code>a</code> or <code>Enter</code>.</li>
             <li><strong>Left-click in the TOC pane</strong> (single-file markdown) &mdash; focuses the TOC and selects the clicked header.</li>
             <li><strong>Scroll wheel in overlay popups</strong> (info, annotations, themes, help) &mdash; scrolls the popup content or moves its cursor. Shift+wheel uses a half-page step. In the theme selector, wheel previews each theme live.</li>
             <li><strong>Left-click in the annotation popup</strong> &mdash; jumps to the clicked annotation (same as pressing <code>Enter</code>).</li>
@@ -640,7 +644,7 @@ printf '\033]52;c;%s\007' "$data" > /dev/tty</code></div>
             <li><strong>Left-click in the file picker</strong> &mdash; jumps to the clicked file (same as pressing <code>Enter</code>). Clicks on the filter row or blank separator are ignored.</li>
             <li><strong>Scroll wheel in the file picker</strong> &mdash; moves the picker cursor. Shift+wheel uses a half-page step.</li>
         </ul>
-        <p>Horizontal wheel, right-click, middle-click, drag selection, and clicks on the status bar or diff header are intentionally ignored. Clicks outside an open overlay are swallowed &mdash; dismiss an overlay with <code>Esc</code> or its toggle key. Modal states (annotation input, search input, confirm discard, reload confirm) swallow mouse events entirely.</p>
+        <p>Horizontal wheel, right-click, middle-click, and clicks on the status bar or diff header are intentionally ignored. Clicks outside an open overlay are swallowed &mdash; dismiss an overlay with <code>Esc</code> or its toggle key. Modal states (annotation input, search input, confirm discard, reload confirm) swallow mouse events entirely.</p>
         <p><strong>Text selection trade-off</strong> &mdash; once mouse tracking is on, plain drag is captured by revdiff. For terminal-native text selection:</p>
         <ul>
             <li><strong>kitty</strong>: hold <code>Ctrl+Shift</code> while dragging</li>
@@ -668,11 +672,11 @@ map alt+t&gt;n theme_select</code></div>
         <p><strong>macOS note:</strong> <code>alt+*</code> leaders require your terminal to send Option as Meta/Alt. Most terminals default to &quot;Option composes special characters&quot; (e.g. <code>Option+T</code> &rarr; <code>&dagger;</code>), in which case Alt chords silently won&apos;t fire. To enable: iTerm2 &rarr; <em>Profiles &rarr; Keys &rarr; Left/Right Option key &rarr; <code>Esc+</code></em>; Terminal.app &rarr; <em>Profiles &rarr; Keyboard &rarr; Use Option as Meta key</em>; Kitty &rarr; <code>macos_option_as_alt yes</code>; Ghostty &rarr; <code>macos-option-as-alt = true</code>. If you&apos;d rather not touch terminal settings, use <code>ctrl+*</code> leaders &mdash; those work everywhere with no configuration.</p>
         <h3>Available actions</h3>
         <p><strong>Navigation:</strong> <code>down</code>, <code>up</code>, <code>page_down</code>, <code>page_up</code>, <code>half_page_down</code>, <code>half_page_up</code>, <code>home</code>, <code>end</code>, <code>scroll_left</code>, <code>scroll_right</code>, <code>scroll_center</code>, <code>scroll_top</code>, <code>scroll_bottom</code>, <code>scroll_diff_down</code>, <code>scroll_diff_up</code></p>
-        <p><strong>File/Hunk:</strong> <code>next_item</code>, <code>prev_item</code>, <code>jump_file</code>, <code>next_hunk</code>, <code>prev_hunk</code>, <code>copy_hunk</code>, <code>open_file_in_editor</code></p>
+        <p><strong>File/Hunk:</strong> <code>next_item</code>, <code>prev_item</code>, <code>jump_file</code>, <code>next_hunk</code>, <code>prev_hunk</code>, <code>copy_hunk</code>, <code>annotate_hunk</code>, <code>open_file_in_editor</code></p>
         <p><strong>Pane:</strong> <code>toggle_pane</code>, <code>focus_tree</code>, <code>focus_diff</code></p>
         <p><strong>Search:</strong> <code>search</code></p>
-        <p><strong>Annotations:</strong> <code>confirm</code>, <code>annotate_file</code>, <code>delete_annotation</code>, <code>annot_list</code>, <code>open_editor</code>, <code>next_annotation</code>, <code>prev_annotation</code>, <code>copy_annotations</code>, <code>flush_output</code></p>
-        <p><strong>View:</strong> <code>toggle_collapsed</code>, <code>toggle_compact</code>, <code>toggle_wrap</code>, <code>toggle_tree</code>, <code>toggle_line_numbers</code>, <code>toggle_blame</code>, <code>toggle_word_diff</code>, <code>toggle_hunk</code>, <code>toggle_untracked</code>, <code>mark_reviewed</code>, <code>theme_select</code>, <code>filter</code>, <code>info</code>, <code>reload</code></p>
+        <p><strong>Annotations:</strong> <code>select_range</code>, <code>confirm</code>, <code>annotate_file</code>, <code>delete_annotation</code>, <code>annot_list</code>, <code>open_editor</code>, <code>next_annotation</code>, <code>prev_annotation</code>, <code>copy_annotations</code>, <code>flush_output</code></p>
+        <p><strong>View:</strong> <code>toggle_collapsed</code>, <code>toggle_compact</code>, <code>toggle_wrap</code>, <code>toggle_tree</code>, <code>toggle_line_numbers</code>, <code>toggle_blame</code>, <code>toggle_word_diff</code>, <code>toggle_hunk</code>, <code>toggle_untracked</code>, <code>mark_reviewed</code>, <code>filter_unreviewed</code>, <code>theme_select</code>, <code>filter</code>, <code>info</code>, <code>reload</code></p>
         <p><strong>Quit:</strong> <code>quit</code>, <code>discard_quit</code>, <code>help</code>, <code>dismiss</code></p>
 
         <h2 id="vim-motion">Vim-motion preset</h2>
@@ -847,13 +851,30 @@ consider splitting this file into smaller modules
 <span class="code-comment">## handler.go:43 (+)</span>
 use errors.Is() instead of direct comparison
 
-<span class="code-comment">## handler.go:43-67 (+)</span>
-refactor this hunk to reduce nesting
+<span class="code-comment">## handler.go:43-44 (+)</span>
+refactor these added lines
+
+<span class="code-comment">## handler.go @@ -43,2 +43,3 @@ (range)</span>
+-old call
+-old fallback
++new call
++new fallback
++new validation
+
+extract the validation helper
+
+<span class="code-comment">## handler.go @@ -52,2 +53,2 @@ (hunk)</span>
+-old branch
+-old return
++new branch
++new return
+
+simplify this hunk
 
 <span class="code-comment">## store.go:18 (-)</span>
 don't remove this validation</code></div>
-        <p>Each annotation block: <code>## filename:line[-end] (type)</code> where type is <code>(+)</code> added, <code>(-)</code> removed, or <code>(file-level)</code>; <code>-end</code> is included when the annotation covers a line range.</p>
-        <p>When annotation text contains the keyword &ldquo;hunk&rdquo; (case-insensitive, whole word), the output header automatically expands to include the full hunk line range (e.g., <code>handler.go:43-67 (+)</code> instead of <code>handler.go:43 (+)</code>). This gives AI consumers the range context without any extra steps.</p>
+        <p>Range and whole-hunk annotations use <code>## path @@ -OLD_START,OLD_COUNT +NEW_START,NEW_COUNT @@ (range)</code> or <code>(hunk)</code>. Clean excerpt rows follow in source order with their <code>-</code> or <code>+</code> prefixes, then a blank line and the comment. The counts describe the old-side and new-side excerpt rows.</p>
+        <p>Legacy line, file-level, and same-side range records remain supported as <code>## filename:line (type)</code>, <code>## filename (file-level)</code>, and <code>## filename:start-end (type)</code>. A line annotation whose comment contains the whole word &ldquo;hunk&rdquo; still emits the legacy same-side range header.</p>
         <p>Comment body lines starting with <code>## </code> (the record-header form) are prefixed with a single space on output so parsers that split on <code>## </code> record headers cannot confuse a multi-line comment for a new record.</p>
 
         <h2 id="integration">Integration with other tools</h2>

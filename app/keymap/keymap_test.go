@@ -3,6 +3,7 @@ package keymap
 import (
 	"errors"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -32,7 +33,7 @@ func TestDefault_allExpectedBindings(t *testing.T) {
 		{"J", ActionScrollDiffDown}, {"K", ActionScrollDiffUp},
 		{"n", ActionNextItem}, {"N", ActionPrevItem}, {"p", ActionPrevItem},
 		{"P", ActionJumpFile},
-		{"]", ActionNextHunk}, {"[", ActionPrevHunk}, {"Y", ActionCopyHunk}, {"e", ActionOpenFileInEditor},
+		{"]", ActionNextHunk}, {"[", ActionPrevHunk}, {"Y", ActionCopyHunk}, {"c", ActionAnnotateHunk}, {"e", ActionOpenFileInEditor},
 		{"tab", ActionTogglePane}, {"h", ActionFocusTree}, {"l", ActionFocusDiff},
 		{"/", ActionSearch},
 		{"a", ActionConfirm}, {"enter", ActionConfirm},
@@ -40,7 +41,7 @@ func TestDefault_allExpectedBindings(t *testing.T) {
 		{"}", ActionNextAnnotation}, {"{", ActionPrevAnnotation}, {"y", ActionCopyAnnotations}, {"O", ActionFlushOutput},
 		{"v", ActionToggleCollapsed}, {"C", ActionToggleCompact}, {"w", ActionToggleWrap}, {"t", ActionToggleTree},
 		{"L", ActionToggleLineNums}, {"B", ActionToggleBlame}, {"W", ActionToggleWordDiff},
-		{".", ActionToggleHunk}, {" ", ActionMarkReviewed}, {"f", ActionFilter}, {"F", ActionFilterUnreviewed},
+		{".", ActionToggleHunk}, {" ", ActionSelectRange}, {"m", ActionMarkReviewed}, {"f", ActionFilter}, {"F", ActionFilterUnreviewed},
 		{"u", ActionToggleUntracked},
 		{"q", ActionQuit}, {"Q", ActionDiscardQuit}, {"?", ActionHelp}, {"T", ActionThemeSelect}, {"esc", ActionDismiss},
 		{"i", ActionInfo},
@@ -1299,4 +1300,27 @@ func TestKeysFor_IncludesChordKeys(t *testing.T) {
 		}
 	}
 	assert.Equal(t, "ctrl+w>x / q", joined)
+}
+
+func TestRangeAndHunkActionsCustomMapUnmap(t *testing.T) {
+	km := Default()
+	assert.Equal(t, ActionSelectRange, km.Resolve(" "))
+	assert.Equal(t, ActionAnnotateHunk, km.Resolve("c"))
+	assert.Equal(t, ActionMarkReviewed, km.Resolve("m"))
+	var dumped strings.Builder
+	require.NoError(t, km.Dump(&dumped))
+	assert.Contains(t, dumped.String(), "map space select_range")
+	assert.Contains(t, dumped.String(), "map c annotate_hunk")
+	assert.Contains(t, dumped.String(), "map m mark_reviewed")
+
+	path := filepath.Join(t.TempDir(), "keys")
+	require.NoError(t, os.WriteFile(path, []byte("unmap space\nunmap c\nunmap m\nmap s select_range\nmap H annotate_hunk\nmap M mark_reviewed\n"), 0o600))
+	custom, err := Load(path)
+	require.NoError(t, err)
+	assert.Empty(t, custom.Resolve(" "))
+	assert.Empty(t, custom.Resolve("c"))
+	assert.Empty(t, custom.Resolve("m"))
+	assert.Equal(t, ActionSelectRange, custom.Resolve("s"))
+	assert.Equal(t, ActionAnnotateHunk, custom.Resolve("H"))
+	assert.Equal(t, ActionMarkReviewed, custom.Resolve("M"))
 }

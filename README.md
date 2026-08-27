@@ -747,7 +747,7 @@ In the Claude Code and Codex plugins, you can also tell the agent to use a past 
 | `Ctrl+d/Ctrl+u` | Half-page scroll in file tree and diff pane |
 | `J/K` | Scroll diff viewport (works from either pane) |
 | `Home/End` | Jump to first/last item |
-| `Enter` | Switch to diff pane (tree) / start annotation (diff pane) |
+| `Enter` | Switch to diff pane (tree) / annotate current line or selection (diff pane) |
 | `n/p` | Next/previous changed file; next/prev header in markdown TOC mode (n = next match when search active) |
 | `P` | Open the file picker |
 | `[` / `]` | Jump to previous/next change hunk in diff; add `--cross-file-hunks` to continue into the previous/next file at the boundary |
@@ -783,7 +783,10 @@ Clipboard delivery uses OSC 52 on the controlling terminal, including SSH sessio
 
 | Key | Action |
 |-----|--------|
-| `a` or `Enter` (diff pane) | Annotate current diff line |
+| `Space` | Start a contiguous range on an added or removed row |
+| `a` or `Enter` (diff pane) | Annotate the current line or selection |
+| `c` | Annotate the whole canonical hunk |
+| `m` | Mark the focused file reviewed |
 | `A` | Add file-level annotation (stored at top of diff) |
 | `@` | Toggle annotation list popup (navigate and jump to any annotation) |
 | `}` / `{` | Jump to next/previous annotation (always crosses file boundaries; silent no-op at the first/last annotation) |
@@ -791,7 +794,9 @@ Clipboard delivery uses OSC 52 on the controlling terminal, including SSH sessio
 | `y` | Copy all current annotations to the terminal clipboard |
 | `O` | Flush annotations to the `--output` file without exiting (requires `-o`) |
 | `Ctrl+E` (during annotation input) | Open `$EDITOR` for multi-line annotation (`open_editor` — rebindable) |
-| `Esc` | Cancel annotation input |
+| `Esc` | Cancel range selection or annotation input |
+
+Press `Space` on an added or removed row to start a contiguous range. Movement keys extend the selection in either direction and keep it within the canonical hunk. Press `a` or `Enter` to annotate the selected rows, or `Esc` to cancel. A left-button drag across added and removed rows creates the same selection, and releasing the button preserves it for `a` or `Enter`. Press `c` on an added or removed row to annotate the whole canonical hunk directly.
 
 While the annotation input is active, press `Ctrl+E` (or whatever key is bound to `open_editor`) to hand off the current text to an external editor for multi-line comments. Editor resolution: `$EDITOR` → `$VISUAL` → `vi`. Values with arguments work (e.g. `EDITOR="code --wait"`). On editor save and quit, the full file contents (including newlines) become the annotation. Quitting the editor with an empty file cancels the annotation and preserves any previously stored note on that line. Multi-line annotations are rendered line-by-line in the diff view, shown flattened in the annotation list popup (`@`), and emitted with embedded newlines in the structured output.
 
@@ -813,7 +818,7 @@ After making the script executable, run revdiff with `--post-flush-command=osc-c
 
 The post-flush command runs synchronously. Use a fast, non-interactive command because revdiff waits for it to finish before restoring the TUI.
 
-Press `Space` to mark the focused file reviewed. Press `F` to toggle the sidebar between all files and unreviewed files; while filtered, marking a file reviewed removes it from the list and advances to the next unfinished file. On `R` reload, revdiff keeps the mark only when the file's effective text diff is unchanged; rebases that only shift line numbers or surrounding context keep it, while changed or removed files lose it. Binary files and opaque placeholders are conservatively unmarked on reload because their rendered diff does not expose enough content to prove they are unchanged.
+Press `m` to mark the focused file reviewed. Press `F` to toggle the sidebar between all files and unreviewed files; while filtered, marking a file reviewed removes it from the list and advances to the next unfinished file. On `R` reload, revdiff keeps the mark only when the file's effective text diff is unchanged; rebases that only shift line numbers or surrounding context keep it, while changed or removed files lose it. Binary files and opaque placeholders are conservatively unmarked on reload because their rendered diff does not expose enough content to prove they are unchanged.
 
 **View:**
 
@@ -851,7 +856,7 @@ The status bar shows a fixed row of mode indicators on the right side. All slots
 | `#` | `L` | Line numbers visible in gutter |
 | `b` | `B` | Blame gutter visible |
 | `±` | `W` | Intra-line word-diff highlighting |
-| `✓` / `○` | `Space` / `F` | Reviewed files / unreviewed-only filter active |
+| `✓` / `○` | `m` / `F` | Reviewed files / unreviewed-only filter active |
 | `∅` | `u` | Untracked files visible in tree |
 
 On narrow terminals, the left-hand segments are dropped before the icons: search position first, then line and hunk info, then the filename truncates. The icon row on the right stays put.
@@ -863,7 +868,7 @@ revdiff enables mouse tracking by default so the scroll wheel and left-click wor
 - **Scroll wheel**: scrolls whichever pane the cursor is over. In the tree/TOC pane the wheel moves the cursor one entry per notch (matches `j`/`k`). In the diff pane the wheel scrolls the viewport by three lines per notch — the diff cursor stays on its current logical line and is pinned to the visible edge if scrolling pushes it off-screen. During fast scrolls (a trackpad flick) the cursor highlight catches up after a brief pause once the burst settles, matching less/vim behavior.
 - **Shift+scroll**: half-page scroll in the diff pane. In the tree/TOC pane Shift+wheel behaves the same as plain wheel (one entry per notch — no page step).
 - **Left-click in the tree**: focuses the tree and selects/loads the clicked entry (same as pressing `j`/`k` to land there). Clicking a directory row moves the cursor but does not load a file.
-- **Left-click in the diff**: focuses the diff and moves the cursor to the clicked line. Enables a "click, then `a`" annotation flow.
+- **Left-click or left drag in the diff**: focuses the diff and moves the cursor to an added or removed row. Dragging selects a contiguous range within its canonical hunk; release preserves the selection for `a` or `Enter`.
 - **Left-click in the TOC pane** (single-file markdown): focuses the TOC and selects the clicked header.
 - **Scroll wheel in overlay popups** (info, annotations, themes, help): scrolls the popup content or moves its cursor. Shift+wheel uses a half-page step. In the theme selector, wheel previews each theme live.
 - **Left-click in the annotation popup**: jumps to the clicked annotation (same as pressing `Enter`).
@@ -871,7 +876,7 @@ revdiff enables mouse tracking by default so the scroll wheel and left-click wor
 - **Left-click in the file picker**: jumps to the clicked file (same as pressing `Enter`). Clicks on the filter row or blank separator are ignored.
 - **Scroll wheel in the file picker**: moves the picker cursor. Shift+wheel uses a half-page step.
 
-Horizontal wheel, right-click, middle-click, drag selection, and clicks on the status bar or diff header are intentionally ignored. Clicks outside an open overlay are swallowed — dismiss an overlay with `Esc` or its toggle key. Modal states (annotation input, search input, confirm discard, reload confirm) swallow mouse events entirely.
+Horizontal wheel, right-click, middle-click, and clicks on the status bar or diff header are intentionally ignored. Clicks outside an open overlay are swallowed. Dismiss an overlay with `Esc` or its toggle key. Modal states (annotation input, search input, confirm discard, reload confirm) swallow mouse events entirely.
 
 **Text selection trade-off** — once mouse tracking is on, plain drag is captured by revdiff. For terminal-native text selection:
 
@@ -926,13 +931,13 @@ When the leader is pressed, the status bar shows `Pending: ctrl+w, esc to cancel
 
 **Navigation:** `down`, `up`, `page_down`, `page_up`, `half_page_down`, `half_page_up`, `home`, `end`, `scroll_left`, `scroll_right`, `scroll_center`, `scroll_top`, `scroll_bottom`, `scroll_diff_down`, `scroll_diff_up`
 
-**File/Hunk:** `next_item`, `prev_item`, `jump_file`, `next_hunk`, `prev_hunk`, `copy_hunk`, `open_file_in_editor`
+**File/Hunk:** `next_item`, `prev_item`, `jump_file`, `next_hunk`, `prev_hunk`, `copy_hunk`, `annotate_hunk`, `open_file_in_editor`
 
 **Pane:** `toggle_pane`, `focus_tree`, `focus_diff`
 
 **Search:** `search`
 
-**Annotations:** `confirm` (annotate line / select file), `annotate_file`, `delete_annotation`, `annot_list`, `open_editor`, `next_annotation`, `prev_annotation`, `copy_annotations`, `flush_output`
+**Annotations:** `select_range`, `confirm` (annotate line or selection / select file), `annotate_file`, `delete_annotation`, `annot_list`, `open_editor`, `next_annotation`, `prev_annotation`, `copy_annotations`, `flush_output`
 
 **View:** `toggle_collapsed`, `toggle_compact`, `toggle_wrap`, `toggle_tree`, `toggle_line_numbers`, `toggle_blame`, `toggle_word_diff`, `toggle_hunk`, `toggle_untracked`, `mark_reviewed`, `filter_unreviewed`, `theme_select`, `filter`, `info`, `reload`
 
@@ -972,14 +977,33 @@ consider splitting this file into smaller modules
 ## handler.go:43 (+)
 use errors.Is() instead of direct comparison
 
-## handler.go:43-67 (+)
-refactor this hunk to reduce nesting
+## handler.go:43-44 (+)
+refactor these added lines
+
+## handler.go @@ -43,2 +43,3 @@ (range)
+-old call
+-old fallback
++new call
++new fallback
++new validation
+
+extract the validation helper
+
+## handler.go @@ -52,2 +53,2 @@ (hunk)
+-old branch
+-old return
++new branch
++new return
+
+simplify this hunk
 
 ## store.go:18 (-)
 don't remove this validation
 ```
 
-When annotation text contains the keyword "hunk" (case-insensitive, whole word), the output header automatically expands to include the full hunk line range (e.g., `handler.go:43-67 (+)` instead of `handler.go:43 (+)`). This gives AI consumers the range context without any extra steps.
+Range and whole-hunk annotations use `## path @@ -OLD_START,OLD_COUNT +NEW_START,NEW_COUNT @@ (range)` or `(hunk)`. Clean excerpt rows follow in source order with their `-` or `+` prefixes, then a blank line and the comment. The counts describe the old-side and new-side excerpt rows.
+
+Legacy line, file-level, and same-side range records remain supported as `## filename:line (type)`, `## filename (file-level)`, and `## filename:start-end (type)`. A line annotation whose comment contains the whole word "hunk" still emits the legacy same-side range header.
 
 Comment body lines starting with `## ` (the record-header form) are prefixed with a single space on output so parsers that split on `## ` record headers cannot confuse a multi-line comment for a new record.
 

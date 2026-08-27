@@ -198,19 +198,29 @@ Both reads return complete content: revdiff writes the output file atomically on
 
 A reviewer may also keep revdiff open on purpose and press `O` to flush the current annotations to the same output file mid-session, without quitting. The flush uses the same atomic write, so the fallback read above still returns a complete file. When the user says something like "I flushed my notes, go ahead" while the overlay is still open, read the most recent output file exactly as in the timeout fallback and process the annotations; do NOT relaunch revdiff. After you finish the code changes, the reviewer reloads with `R` and continues in the same session. No launcher flags change for this — the launcher already passes an output file, and `O` reuses it.
 
+Inside revdiff, `Space` starts a contiguous range on an added or removed row. Movement extends it within the canonical hunk, and a left-button drag selects the same way while release preserves the selection. `a` or `Enter` annotates the selected rows, `Esc` cancels, `c` annotates the whole hunk, and `m` marks the file reviewed.
+
 If the script produces output, the user made annotations. The output format is:
 
 ```
 ## file.go:43 (+)
 use errors.Is() instead of direct comparison
 
-## store.go:18 (-)
-don't remove this validation
+## store.go @@ -18,2 +18,3 @@ (range)
+-old call
+-old fallback
++new call
++new fallback
++new validation
+
+extract the validation helper
 ```
 
 Each annotation block has:
-- `## filename:line (type)` — which file and line, `(+)` = added, `(-)` = removed, `(file-level)` = file note
-- Comment text below — what the user wants changed
+- A legacy header, `## filename:line[-end] (type)`, for line, file-level, and same-side range notes
+- A scoped header, `## path @@ -OLD_START,OLD_COUNT +NEW_START,NEW_COUNT @@ (range)`, or the same header ending in `(hunk)`, for explicit range and whole-hunk notes
+- Scoped headers are followed by the counted clean `-` and `+` excerpt rows in source order, a blank line, then the comment text
+- The comment text is what the user wants changed; do not treat scoped excerpt rows as part of the comment
 
 ### Step 3.5: Classify Annotations
 

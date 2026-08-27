@@ -381,6 +381,64 @@ func TestStore_FormatOutputEndLineRange(t *testing.T) {
 	assert.Equal(t, expected, s.FormatOutput(), "EndLine>0 should produce line range")
 }
 
+func TestStore_FormatOutputScopedAnnotations(t *testing.T) {
+	tests := []struct {
+		name string
+		ann  Annotation
+		want string
+	}{
+		{
+			name: "mixed range",
+			ann: Annotation{File: "a.go", Line: 10, Type: "-", Scope: ScopeRange,
+				OldStart: 10, OldCount: 2, NewStart: 10, NewCount: 2,
+				Excerpt: []ExcerptLine{{Type: "-", Content: "old one"}, {Type: "-", Content: "old two"}, {Type: "+", Content: "new one"}, {Type: "+", Content: "new two"}}, Comment: "replace both"},
+			want: "## a.go @@ -10,2 +10,2 @@ (range)\n-old one\n-old two\n+new one\n+new two\n\nreplace both\n",
+		},
+		{
+			name: "pure addition",
+			ann: Annotation{File: "new.go", Line: 3, Type: "+", Scope: ScopeRange,
+				OldStart: 0, OldCount: 0, NewStart: 3, NewCount: 1,
+				Excerpt: []ExcerptLine{{Type: "+", Content: "added"}}, Comment: "note"},
+			want: "## new.go @@ -0,0 +3,1 @@ (range)\n+added\n\nnote\n",
+		},
+		{
+			name: "pure removal hunk",
+			ann: Annotation{File: "old.go", Line: 7, Type: "-", Scope: ScopeHunk,
+				OldStart: 7, OldCount: 1, NewStart: 0, NewCount: 0,
+				Excerpt: []ExcerptLine{{Type: "-", Content: "gone"}}, Comment: "remove"},
+			want: "## old.go @@ -7,1 +0,0 @@ (hunk)\n-gone\n\nremove\n",
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			s := NewStore()
+			s.Add(tc.ann)
+			assert.Equal(t, tc.want, s.FormatOutput())
+			parsed, err := Parse(strings.NewReader(s.FormatOutput()))
+			require.NoError(t, err)
+			require.Len(t, parsed, 1)
+			assert.Equal(t, tc.ann, parsed[0])
+		})
+	}
+}
+
+func TestStore_ScopeIdentityDoesNotOverwrite(t *testing.T) {
+	s := NewStore()
+	line := Annotation{File: "a.go", Line: 2, Type: "+", Comment: "line"}
+	rng := Annotation{File: "a.go", Line: 2, Type: "+", Scope: ScopeRange, NewStart: 2, NewCount: 1, Excerpt: []ExcerptLine{{Type: "+", Content: "x"}}, Comment: "range"}
+	hunk := rng
+	hunk.Scope, hunk.Comment = ScopeHunk, "hunk"
+	s.Add(line)
+	s.Add(rng)
+	s.Add(hunk)
+	assert.Len(t, s.Get("a.go"), 3)
+	rng.Comment = "updated"
+	s.Add(rng)
+	assert.Len(t, s.Get("a.go"), 3)
+	require.True(t, s.DeleteExact(hunk))
+	assert.Len(t, s.Get("a.go"), 2)
+}
+
 func TestStore_FormatOutputFileLevelIgnoresEndLine(t *testing.T) {
 	s := NewStore()
 	s.Add(Annotation{File: "handler.go", Line: 0, EndLine: 50, Type: "", Comment: "file comment"})

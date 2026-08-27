@@ -29,8 +29,11 @@ func (m Model) buildAnnotListSpec() overlay.AnnotListSpec {
 	items := make([]overlay.AnnotationItem, len(annots))
 	for i, a := range annots {
 		items[i] = overlay.AnnotationItem{
-			AnnotationTarget: overlay.AnnotationTarget{File: a.File, ChangeType: a.Type, Line: a.Line},
-			Comment:          a.Comment,
+			AnnotationTarget: overlay.AnnotationTarget{
+				File: a.File, ChangeType: a.Type, Line: a.Line, Scope: string(a.Scope),
+				OldStart: a.OldStart, OldCount: a.OldCount, NewStart: a.NewStart, NewCount: a.NewCount,
+			},
+			Comment: a.Comment,
 		}
 	}
 	return overlay.AnnotListSpec{Items: items}
@@ -56,7 +59,16 @@ func (m Model) tryJumpToAnnotationTarget(target *overlay.AnnotationTarget) (tea.
 	if target == nil {
 		return m, nil, false
 	}
-	a := annotation.Annotation{File: target.File, Line: target.Line, Type: target.ChangeType}
+	a := annotation.Annotation{
+		File: target.File, Line: target.Line, Type: target.ChangeType, Scope: annotation.Scope(target.Scope),
+		OldStart: target.OldStart, OldCount: target.OldCount, NewStart: target.NewStart, NewCount: target.NewCount,
+	}
+	for _, stored := range m.store.Get(a.File) {
+		if sameAnnotationTarget(stored, a) {
+			a = stored
+			break
+		}
+	}
 
 	if a.File == m.file.name {
 		if a.Line != 0 && m.findDiffLineIndex(a.Line, a.Type) < 0 {
@@ -85,6 +97,8 @@ func (m Model) tryJumpToAnnotationTarget(target *overlay.AnnotationTarget) (tea.
 // cursor would land on the diff line above the comment, leaving navigation visually one row off the target.
 func (m *Model) positionOnAnnotation(a annotation.Annotation) {
 	m.annot.cursorOnAnnotation = false
+	target := a
+	m.annot.target = &target
 	if a.Line == 0 {
 		m.nav.diffCursor = -1
 	} else {

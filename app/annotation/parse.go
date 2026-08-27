@@ -10,24 +10,12 @@ import (
 	"strings"
 )
 
-// headerRe matches the four record-header shapes emitted by Store.FormatOutput:
-//
-//	## path (file-level)
-//	## path:N (T)
-//	## path:N-M (T)
-//
-// where T is one of "+", "-", or " " (literal space).
-var headerRe = regexp.MustCompile(`^## (.+?)(?::(\d+)(?:-(\d+))?)? \((file-level|\+|-| )\)$`)
+var (
+	legacyHeaderRe = regexp.MustCompile(`^## (.+?)(?::(\d+)(?:-(\d+))?)? \((file-level|\+|-| )\)$`)
+	scopeHeaderRe  = regexp.MustCompile(`^## (.+) @@ -(\d+),(\d+) \+(\d+),(\d+) @@ \((range|hunk)\)$`)
+)
 
-// Parse reads the markdown produced by Store.FormatOutput and returns the
-// recovered annotations in source order. Duplicates (same file/line/type) are
-// returned as separate records; callers feed them through Store.Add to apply
-// last-write-wins semantics.
-//
-// A line beginning with "## " that does NOT match the header grammar is folded
-// into the body of the current record so hand-authored or LLM-generated bodies
-// can mention "## something" without escaping. If such a line appears before
-// any record header, it is reported as an error.
+// Parse reads markdown produced by Store.FormatOutput.
 func Parse(r io.Reader) ([]Annotation, error) {
 	p := parser{scanner: bufio.NewScanner(r)}
 	p.scanner.Buffer(make([]byte, 64*1024), 4*1024*1024)
@@ -35,8 +23,7 @@ func Parse(r io.Reader) ([]Annotation, error) {
 }
 
 type parser struct {
-	scanner *bufio.Scanner
-
+	scanner      *bufio.Scanner
 	out          []Annotation
 	current      *Annotation
 	body         []string
@@ -50,22 +37,19 @@ func (p *parser) parse() ([]Annotation, error) {
 		if strings.HasPrefix(line, "## ") {
 			ann, err := p.parseHeader(line)
 			if err != nil {
-				// non-grammar "## " line inside a record: treat as body content
-				// (post-strip of any leading-space escape) so authored bodies
-				// can mention "## foo" without escaping. Before the first
-				// header, propagate the error.
 				if !p.seenHeader {
 					return nil, err
 				}
 				p.appendBody(line)
 				continue
 			}
-			p.flush()
+			if err := p.flush(); err != nil {
+				return nil, err
+			}
 			p.seenHeader = true
 			p.current = &ann
 			continue
 		}
-
 		if !p.seenHeader {
 			if strings.TrimSpace(line) == "" {
 				continue
@@ -73,24 +57,20 @@ func (p *parser) parse() ([]Annotation, error) {
 			p.nonBlankSeen = true
 			break
 		}
-
 		p.appendBody(line)
 	}
 	if err := p.scanner.Err(); err != nil {
 		return nil, fmt.Errorf("scan annotations: %w", err)
 	}
-
 	if !p.seenHeader && p.nonBlankSeen {
 		return nil, errors.New("annotation input has content before any header")
 	}
-
-	p.flush()
+	if err := p.flush(); err != nil {
+		return nil, err
+	}
 	return p.out, nil
 }
 
-// appendBody adds a body line, stripping the inverse of escapeHeaderLines:
-// exactly one leading space when the line's first non-space content begins
-// with "## ".
 func (p *parser) appendBody(line string) {
 	if strings.HasPrefix(line, " ") && strings.HasPrefix(strings.TrimLeft(line, " "), "## ") {
 		line = line[1:]
@@ -98,34 +78,70 @@ func (p *parser) appendBody(line string) {
 	p.body = append(p.body, line)
 }
 
-func (p *parser) flush() {
+func (p *parser) flush() error {
 	if p.current == nil {
-		return
+		return nil
 	}
-	// FormatOutput always emits a trailing newline after the body. Strip
-	// exactly one trailing empty line that came from the format separator.
 	if n := len(p.body); n > 0 && p.body[n-1] == "" {
 		p.body = p.body[:n-1]
+	}
+	if p.current.Scope == ScopeRange || p.current.Scope == ScopeHunk {
+		excerptCount := p.current.OldCount + p.current.NewCount
+		if len(p.body) < excerptCount+1 || p.body[excerptCount] != "" {
+			return fmt.Errorf("malformed %s annotation for %q: expected %d excerpt lines and a blank separator",
+				p.current.Scope, p.current.File, excerptCount)
+		}
+		oldSeen, newSeen := 0, 0
+		for _, line := range p.body[:excerptCount] {
+			if line == "" || (line[0] != '+' && line[0] != '-') {
+				return fmt.Errorf("malformed %s annotation excerpt for %q", p.current.Scope, p.current.File)
+			}
+			kind := line[:1]
+			if kind == "+" {
+				newSeen++
+			} else {
+				oldSeen++
+			}
+			p.current.Excerpt = append(p.current.Excerpt, ExcerptLine{Type: kind, Content: line[1:]})
+		}
+		if oldSeen != p.current.OldCount || newSeen != p.current.NewCount {
+			return fmt.Errorf("malformed %s annotation counts for %q", p.current.Scope, p.current.File)
+		}
+		p.body = p.body[excerptCount+1:]
+		if len(p.current.Excerpt) > 0 {
+			p.current.Type = p.current.Excerpt[0].Type
+			if p.current.Type == "+" {
+				p.current.Line = p.current.NewStart
+			} else {
+				p.current.Line = p.current.OldStart
+			}
+		}
 	}
 	p.current.Comment = strings.Join(p.body, "\n")
 	p.out = append(p.out, *p.current)
 	p.current = nil
 	p.body = nil
+	return nil
 }
 
-// parseHeader parses a single "## ..." header line into an Annotation.
-// returns an error if the line does not match the expected grammar.
 func (p *parser) parseHeader(line string) (Annotation, error) {
-	m := headerRe.FindStringSubmatch(line)
+	if m := scopeHeaderRe.FindStringSubmatch(line); m != nil {
+		values := make([]int, 4)
+		for i := range values {
+			n, err := strconv.Atoi(m[i+2])
+			if err != nil {
+				return Annotation{}, fmt.Errorf("malformed annotation range: %q", line)
+			}
+			values[i] = n
+		}
+		return Annotation{File: m[1], OldStart: values[0], OldCount: values[1], NewStart: values[2], NewCount: values[3], Scope: Scope(m[6])}, nil
+	}
+	m := legacyHeaderRe.FindStringSubmatch(line)
 	if m == nil {
 		return Annotation{}, fmt.Errorf("malformed annotation header: %q", line)
 	}
 	ann := Annotation{File: m[1]}
 	if m[4] == "file-level" {
-		// file-level headers are emitted as "## path (file-level)" with no
-		// numeric suffix on the path. if the regex consumed a `:N`/`:N-M`
-		// tail into the optional line group, the path itself ended in
-		// `:N`/`:N-M` — restore it so paths that look numeric round-trip.
 		if m[2] != "" {
 			ann.File += ":" + m[2]
 			if m[3] != "" {

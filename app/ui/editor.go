@@ -11,6 +11,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
+	"github.com/umputun/revdiff/app/annotation"
 	"github.com/umputun/revdiff/app/diff"
 	"github.com/umputun/revdiff/app/editor"
 )
@@ -47,6 +48,7 @@ type editorFinishedMsg struct {
 	fileLevel  bool
 	line       int
 	changeType string
+	target     *annotation.Annotation
 
 	// restoreMouse requests mouse tracking after the editor returns.
 	// Bubble Tea disables mouse modes while the child process owns the terminal;
@@ -69,6 +71,11 @@ func (m *Model) openEditor() tea.Cmd {
 	}
 	fileName := m.file.name
 	fileLevel := m.annot.fileAnnotating
+	var target *annotation.Annotation
+	if m.annot.target != nil {
+		captured := *m.annot.target
+		target = &captured
+	}
 
 	var line int
 	var changeType string
@@ -84,7 +91,7 @@ func (m *Model) openEditor() tea.Cmd {
 	cmd, complete, err := m.editor.Command(content)
 	if err != nil {
 		return func() tea.Msg {
-			return editorFinishedMsg{err: err, seed: content, fileName: fileName, fileLevel: fileLevel, line: line, changeType: changeType}
+			return editorFinishedMsg{err: err, seed: content, fileName: fileName, fileLevel: fileLevel, line: line, changeType: changeType, target: target}
 		}
 	}
 
@@ -103,6 +110,7 @@ func (m *Model) openEditor() tea.Cmd {
 			fileLevel:    fileLevel,
 			line:         line,
 			changeType:   changeType,
+			target:       target,
 		}
 	})
 }
@@ -335,7 +343,11 @@ func (m Model) handleEditorFinished(msg editorFinishedMsg) (tea.Model, tea.Cmd) 
 		m.cancelAnnotation()
 		return m, cmd
 	}
-	m.saveComment(msg.content, msg.fileName, msg.fileLevel, msg.line, msg.changeType)
+	if msg.target != nil && !msg.fileLevel {
+		m.saveTargetComment(msg.content, *msg.target)
+	} else {
+		m.saveComment(msg.content, msg.fileName, msg.fileLevel, msg.line, msg.changeType)
+	}
 	return m, cmd
 }
 

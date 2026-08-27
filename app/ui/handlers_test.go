@@ -28,14 +28,14 @@ func TestModel_MarkReviewedFromTreePane(t *testing.T) {
 	m.layout.focus = paneTree
 
 	// space bar toggles reviewed
-	result, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{' '}})
+	result, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'m'}})
 	model := result.(Model)
-	assert.Equal(t, 1, model.tree.ReviewedCount(), "space should mark current file as reviewed")
+	assert.Equal(t, 1, model.tree.ReviewedCount(), "m should mark current file as reviewed")
 
 	// space again toggles off
-	result, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{' '}})
+	result, _ = model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'m'}})
 	model = result.(Model)
-	assert.Equal(t, 0, model.tree.ReviewedCount(), "space should unmark reviewed file")
+	assert.Equal(t, 0, model.tree.ReviewedCount(), "m should unmark reviewed file")
 }
 
 func TestModel_UnreviewedFilterAdvancesAsFilesAreReviewed(t *testing.T) {
@@ -53,7 +53,7 @@ func TestModel_UnreviewedFilterAdvancesAsFilesAreReviewed(t *testing.T) {
 	model := result.(Model)
 	require.True(t, model.tree.UnreviewedFilterActive())
 
-	result, cmd := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{' '}})
+	result, cmd := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'m'}})
 	model = result.(Model)
 	assert.True(t, model.tree.IsReviewed("a.go"))
 	assert.Equal(t, "b.go", model.tree.SelectedFile())
@@ -78,7 +78,7 @@ func TestModel_MarkReviewedFromTreePaneUsesSelectedFile(t *testing.T) {
 	m.layout.focus = paneTree
 	m.tree.Move(sidepane.MotionDown) // cursor -> b.go while the diff pane still shows a.go
 
-	result, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{' '}})
+	result, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'m'}})
 	model := result.(Model)
 	require.NotNil(t, cmd)
 	result, _ = model.Update(cmd())
@@ -99,9 +99,9 @@ func TestModel_MarkReviewedFromDiffPane(t *testing.T) {
 	m.layout.focus = paneDiff
 
 	// space from diff pane marks currFile
-	result, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{' '}})
+	result, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'m'}})
 	model := result.(Model)
-	assert.Equal(t, 1, model.tree.ReviewedCount(), "space in diff pane should mark currFile as reviewed")
+	assert.Equal(t, 1, model.tree.ReviewedCount(), "m in diff pane should mark currFile as reviewed")
 }
 
 func TestModel_MarkReviewedDropsAsyncResultFromStaleFileList(t *testing.T) {
@@ -112,7 +112,7 @@ func TestModel_MarkReviewedDropsAsyncResultFromStaleFileList(t *testing.T) {
 	m.layout.focus = paneTree
 	m.tree.Move(sidepane.MotionDown)
 
-	result, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{' '}})
+	result, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'m'}})
 	model := result.(Model)
 	require.NotNil(t, cmd)
 	model.filesLoadSeq++ // another file-list generation starts before the fingerprint returns
@@ -133,7 +133,7 @@ func TestModel_MarkReviewedDropsAsyncResultForPathRemovedDuringReload(t *testing
 	m.tree.Move(sidepane.MotionDown)
 	m.filesLoadSeq++ // reload begins; the old tree remains visible until filesLoadedMsg arrives
 
-	result, markCmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{' '}})
+	result, markCmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'m'}})
 	model := result.(Model)
 	require.NotNil(t, markCmd)
 	result, _ = model.Update(filesLoadedMsg{
@@ -159,7 +159,7 @@ func TestModel_MarkReviewedKeepsAsyncResultForPathSurvivingReload(t *testing.T) 
 	m.tree.Move(sidepane.MotionDown)
 	m.filesLoadSeq++
 
-	result, markCmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{' '}})
+	result, markCmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'m'}})
 	model := result.(Model)
 	require.NotNil(t, markCmd)
 	result, _ = model.Update(filesLoadedMsg{

@@ -39,9 +39,8 @@ func (m Model) handleAnnotNav(forward bool) (tea.Model, tea.Cmd) {
 	for idx := startingFlatIndex(flat, cur, forward); idx >= 0 && idx < len(flat); idx += step {
 		target := flat[idx]
 		nextModel, cmd, jumped := m.tryJumpToAnnotationTarget(&overlay.AnnotationTarget{
-			File:       target.File,
-			ChangeType: target.Type,
-			Line:       target.Line,
+			File: target.File, ChangeType: target.Type, Line: target.Line, Scope: string(target.Scope),
+			OldStart: target.OldStart, OldCount: target.OldCount, NewStart: target.NewStart, NewCount: target.NewCount,
 		})
 		if jumped {
 			return nextModel, cmd
@@ -57,10 +56,15 @@ func (m Model) handleAnnotNav(forward bool) (tea.Model, tea.Cmd) {
 // the same annotation. In that case navigation steps by index in the flat
 // list; otherwise it uses an insertion-point fallback.
 type cursorAnnotKey struct {
-	file    string
-	line    int
-	typ     string
-	onAnnot bool
+	file     string
+	line     int
+	typ      string
+	scope    annotation.Scope
+	oldStart int
+	oldCount int
+	newStart int
+	newCount int
+	onAnnot  bool
 }
 
 // currentAnnotKey returns the cursor's annotation-space key.
@@ -89,7 +93,13 @@ func (m Model) currentAnnotKey() cursorAnnotKey {
 	}
 	line := m.diffLineNum(dl)
 	typ := string(dl.ChangeType)
-	return cursorAnnotKey{file: file, line: line, typ: typ, onAnnot: m.store.Has(file, line, typ)}
+	key := cursorAnnotKey{file: file, line: line, typ: typ, onAnnot: m.store.Has(file, line, typ)}
+	if m.annot.target != nil && m.annot.target.File == file && m.annot.target.Line == line && m.annot.target.Type == typ {
+		key.scope = m.annot.target.Scope
+		key.oldStart, key.oldCount = m.annot.target.OldStart, m.annot.target.OldCount
+		key.newStart, key.newCount = m.annot.target.NewStart, m.annot.target.NewCount
+	}
+	return key
 }
 
 // dividerAnnotKey returns the cursor's annotation-space key when the cursor
@@ -138,7 +148,9 @@ func exactAnnotIndex(flat []annotation.Annotation, cur cursorAnnotKey) (int, boo
 		return 0, false
 	}
 	for i, a := range flat {
-		if a.File == cur.file && a.Line == cur.line && a.Type == cur.typ {
+		if a.File == cur.file && a.Line == cur.line && a.Type == cur.typ && a.Scope == cur.scope &&
+			a.OldStart == cur.oldStart && a.OldCount == cur.oldCount &&
+			a.NewStart == cur.newStart && a.NewCount == cur.newCount {
 			return i, true
 		}
 	}
