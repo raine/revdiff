@@ -371,7 +371,7 @@ Use `revdiff --commit` to review exactly the changes introduced by `HEAD`, indep
 | `base` | Git ref to diff against | uncommitted changes |
 | `against` | Second git ref for two-ref diff | |
 | `--staged` | Show staged changes, env: `REVDIFF_STAGED` | `false` |
-| `--commit[=REVISION]` | Show changes introduced by one commit | `HEAD` |
+| `-c`, `--commit[=REVISION]` | Show changes introduced by one commit | `HEAD` |
 | `--untracked` | Show untracked files in the tree, env: `REVDIFF_UNTRACKED` | `false` |
 | `--tree-width` | File tree panel width in units (1-10), env: `REVDIFF_TREE_WIDTH` | `2` |
 | `--tab-width` | Number of spaces per tab character, env: `REVDIFF_TAB_WIDTH` | `4` |

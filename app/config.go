@@ -33,7 +33,7 @@ type options struct {
 	} `positional-args:"yes"`
 
 	Staged bool         `long:"staged" ini-name:"staged" env:"REVDIFF_STAGED" description:"show staged changes"`
-	Commit commitOption `long:"commit" no-ini:"true" optional:"true" optional-value:"HEAD" value-name:"[REVISION]" description:"show changes introduced by one commit"`
+	Commit commitOption `long:"commit" short:"c" no-ini:"true" optional:"true" optional-value:"HEAD" value-name:"[REVISION]" description:"show changes introduced by one commit"`
 
 	Untracked             bool     `long:"untracked" ini-name:"untracked" env:"REVDIFF_UNTRACKED" description:"show untracked files in the tree"`
 	TreeWidth             int      `long:"tree-width" ini-name:"tree-width" env:"REVDIFF_TREE_WIDTH" default:"2" description:"file tree panel width in units (1-10, default 2 of 10)"`

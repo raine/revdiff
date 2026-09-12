@@ -755,6 +755,8 @@ func TestParseArgs_Commit(t *testing.T) {
 	}{
 		{name: "HEAD default", arg: "--commit", want: "HEAD"},
 		{name: "selected revision", arg: "--commit=release", want: "release"},
+		{name: "short HEAD default", arg: "-c", want: "HEAD"},
+		{name: "short selected revision", arg: "-c=release", want: "release"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -800,7 +802,7 @@ func TestCommitHelp(t *testing.T) {
 	parser := flags.NewParser(&opts, flags.Default)
 	var buf bytes.Buffer
 	parser.WriteHelp(&buf)
-	assert.Contains(t, buf.String(), "--commit=[REVISION]")
+	assert.Contains(t, buf.String(), "-c, --commit=[REVISION]")
 	assert.Contains(t, buf.String(), "show changes introduced by one commit")
 }
 
