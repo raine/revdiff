@@ -163,4 +163,4 @@ Fixed modal keys (Enter, Esc in annotation/search input, confirm discard) are no
 
 The `copy_annotations` action (default `y`) copies the complete canonical annotation snapshot to the terminal clipboard without exiting or changing the store. It uses OSC 52 and rejects snapshots larger than 100,000 bytes.
 
-The `flush_output` action (default `O`) exports the complete annotation snapshot without exiting revdiff. Configure `--output`, `--post-flush-command`, or both. The output file is overwritten atomically, while the command receives the same snapshot on stdin. With neither configured, or with no annotations yet, revdiff shows a status hint and does nothing.
+The `flush_output` action (default `O`) exports the complete annotation snapshot without exiting revdiff. Configure `--output`, `--post-flush-command`, or both. The output file is overwritten atomically, while the command receives the same snapshot on stdin. A successful flush removes the exported annotations; annotations added or edited while a command is running are preserved. With neither route configured, or with no annotations yet, revdiff shows a status hint and does nothing.

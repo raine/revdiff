@@ -6,6 +6,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
+	"github.com/umputun/revdiff/app/annotation"
 	"github.com/umputun/revdiff/app/keymap"
 )
 
@@ -17,10 +18,10 @@ type outputState struct {
 }
 
 type postFlushFinishedMsg struct {
-	err          error
-	successHint  string
-	failureHint  string
-	restoreMouse bool
+	err         error
+	successHint string
+	failureHint string
+	flushed     map[string][]annotation.Annotation
 }
 
 func (m Model) handleOutputAction(action keymap.Action) (tea.Model, tea.Cmd, bool) {
@@ -60,9 +61,9 @@ func (m Model) handleCopyAnnotations() tea.Model {
 }
 
 // handleFlushOutput exports the current annotations through the configured
-// output file and/or post-flush command without exiting. The store is never
-// mutated, so annotations persist in-session and can be re-flushed. Feedback
-// is reported through output.hint.
+// output file and/or post-flush command without exiting. A successful export
+// removes the flushed snapshot while preserving annotations changed during an
+// asynchronous command. Feedback is reported through output.hint.
 func (m Model) handleFlushOutput() (tea.Model, tea.Cmd) {
 	n := m.store.Count()
 	if n == 0 {
@@ -77,6 +78,7 @@ func (m Model) handleFlushOutput() (tea.Model, tea.Cmd) {
 	if n == 1 {
 		noun = "annotation"
 	}
+	flushed := m.store.All()
 
 	var content, writtenHint string
 	if m.cfg.outputPath != "" {
@@ -94,7 +96,7 @@ func (m Model) handleFlushOutput() (tea.Model, tea.Cmd) {
 
 	if m.postFlushHook == nil {
 		m.output.hint = writtenHint
-		return m, nil
+		return m, m.removeFlushedAnnotations(flushed)
 	}
 
 	runningHint := fmt.Sprintf("Running post-flush command with %d %s", n, noun)
@@ -105,28 +107,39 @@ func (m Model) handleFlushOutput() (tea.Model, tea.Cmd) {
 		successHint = writtenHint + " and ran post-flush command"
 		failureHint = writtenHint + "; post-flush command failed"
 	}
-	cmd := m.postFlushHook.Prepare(content)
+	process := m.postFlushHook.Prepare(content)
 	m.output.hint = runningHint
-	return m, tea.ExecProcess(cmd, func(runErr error) tea.Msg {
+	return m, func() tea.Msg {
 		return postFlushFinishedMsg{
-			err:          runErr,
-			successHint:  successHint,
-			failureHint:  failureHint,
-			restoreMouse: m.cfg.mouseTracking,
+			err:         process.Run(),
+			successHint: successHint,
+			failureHint: failureHint,
+			flushed:     flushed,
 		}
-	})
+	}
 }
 
 func (m Model) handlePostFlushFinished(msg postFlushFinishedMsg) (tea.Model, tea.Cmd) {
-	var cmd tea.Cmd
-	if msg.restoreMouse {
-		cmd = tea.EnableMouseCellMotion
-	}
 	if msg.err != nil {
 		log.Printf("[WARN] post-flush command failed: %v", msg.err)
 		m.output.hint = msg.failureHint
-		return m, cmd
+		return m, nil
 	}
 	m.output.hint = msg.successHint
-	return m, cmd
+	return m, m.removeFlushedAnnotations(msg.flushed)
+}
+
+func (m *Model) removeFlushedAnnotations(flushed map[string][]annotation.Annotation) tea.Cmd {
+	m.store.RemoveMatching(flushed)
+	m.pendingAnnotJump = nil
+	m.nav.pendingHunkJump = nil
+	m.annot.cursorOnAnnotation = false
+	m.annot.target = nil
+	m.tree.RefreshFilter(m.annotatedFiles())
+
+	if newFile := m.tree.SelectedFile(); newFile != "" && newFile != m.file.name {
+		return m.requestFileDiff(newFile)
+	}
+	m.syncViewportToCursor()
+	return nil
 }

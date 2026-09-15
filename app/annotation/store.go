@@ -176,6 +176,39 @@ func (s *Store) Count() int {
 // Clear removes every annotation.
 func (s *Store) Clear() { s.annotations = make(map[string][]Annotation) }
 
+// RemoveMatching removes annotations that are unchanged from a prior snapshot.
+// An annotation edited or replaced after the snapshot was taken is preserved.
+func (s *Store) RemoveMatching(snapshot map[string][]Annotation) {
+	for file, flushed := range snapshot {
+		for _, a := range flushed {
+			i, ok := s.findExact(a)
+			if !ok || !sameAnnotation(s.annotations[file][i], a) {
+				continue
+			}
+			existing := s.annotations[file]
+			s.annotations[file] = append(existing[:i], existing[i+1:]...)
+			if len(s.annotations[file]) == 0 {
+				delete(s.annotations, file)
+			}
+		}
+	}
+}
+
+func sameAnnotation(a, b Annotation) bool {
+	if a.File != b.File || a.Line != b.Line || a.EndLine != b.EndLine || a.Type != b.Type ||
+		a.Comment != b.Comment || a.Scope != b.Scope || a.OldStart != b.OldStart ||
+		a.OldCount != b.OldCount || a.NewStart != b.NewStart || a.NewCount != b.NewCount ||
+		len(a.Excerpt) != len(b.Excerpt) {
+		return false
+	}
+	for i := range a.Excerpt {
+		if a.Excerpt[i] != b.Excerpt[i] {
+			return false
+		}
+	}
+	return true
+}
+
 // All returns a sorted copy of the annotations grouped by file.
 func (s *Store) All() map[string][]Annotation {
 	result := make(map[string][]Annotation, len(s.annotations))

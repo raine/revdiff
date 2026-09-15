@@ -805,7 +805,7 @@ Press `e` in the diff pane to open the focused file in `$EDITOR` (`open_file_in_
 
 Press `y` to copy every current annotation to the terminal clipboard (`copy_annotations`, rebindable). The copied text is the same complete structured snapshot emitted on graceful quit, including annotations across all files. Copying keeps revdiff open and leaves the annotation store unchanged. revdiff sends the snapshot with OSC 52, which works through local terminals and SSH when the terminal permits clipboard access. GNU screen receives a passthrough sequence, and tmux handles the OSC 52 request through its `set-clipboard` setting. Snapshots larger than 100,000 bytes fail with a status hint rather than sending a sequence. OSC 52 does not acknowledge whether the terminal accepted the clipboard update.
 
-Press `O` to export the current annotations without exiting (`flush_output`, rebindable). Configure `--output`, `--post-flush-command`, or both. Each flush sends the complete annotation snapshot: the output file is overwritten atomically, and the command receives the same snapshot on stdin. With neither configured, or with no annotations yet, revdiff shows a status hint and does nothing.
+Press `O` to export the current annotations without exiting (`flush_output`, rebindable). Configure `--output`, `--post-flush-command`, or both. Each flush sends the complete annotation snapshot: the output file is overwritten atomically, and the command receives the same snapshot on stdin. A successful flush removes the exported annotations from the review; annotations added or edited while a command is running are preserved. With neither route configured, or with no annotations yet, revdiff shows a status hint and does nothing.
 
 A post-flush command can send the snapshot directly without requiring an output file. For example, create an `osc-copy` shell script on your `PATH` that reads stdin and writes the clipboard sequence to `/dev/tty`:
 
@@ -817,7 +817,7 @@ printf '\033]52;c;%s\007' "$data" > /dev/tty
 
 After making the script executable, run revdiff with `--post-flush-command=osc-copy` or set `post-flush-command = osc-copy` in the config file. No output file is required; add `--output` only when the same flush should also write a snapshot file.
 
-The post-flush command runs synchronously. Use a fast, non-interactive command because revdiff waits for it to finish before restoring the TUI.
+The post-flush command runs in the background while the TUI remains visible. Completion or failure appears in the status bar.
 
 Press `m` to mark the focused file reviewed. Press `F` to toggle the sidebar between all files and unreviewed files; while filtered, marking a file reviewed removes it from the list and advances to the next unfinished file. On `R` reload, revdiff keeps the mark only when the file's effective text diff is unchanged; rebases that only shift line numbers or surrounding context keep it, while changed or removed files lose it. Binary files and opaque placeholders are conservatively unmarked on reload because their rendered diff does not expose enough content to prove they are unchanged.
 

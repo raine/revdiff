@@ -163,8 +163,8 @@ across files by concern to keep files under ~500 lines:
 - **`editor.go`** — `$EDITOR` handoffs for annotation temp-file editing and source-file opening:
   `openEditor()` / `openSourceEditor()` wrap `app/editor.Editor` in `tea.ExecProcess`, capture
   target state, route completion, and refresh the current file after a clean source-editor exit
-- **`output.go`** — in-session annotation flush and optional post-flush command handoff through
-  injected `PostFlushHook` + `tea.ExecProcess`
+- **`output.go`** — in-session annotation flush and asynchronous post-flush command handoff through
+  an injected `PostFlushHook` + background `tea.Cmd`
 - **`clipboard.go`** - plain-text current-hunk extraction and status feedback through the injected
   `Clipboard` interface
 - **`themeselect.go`** — theme selector operations: open, preview, confirm, apply (via injected
@@ -410,7 +410,7 @@ side). The default wiring is `editor.Editor{}` injected through `ModelConfig.Edi
 Prepares the user-configured shell command for an explicit `O` handoff. `New` returns nil for an
 empty command; a constructed runner's `Prepare(content)` is infallible, supplies the exact
 annotation snapshot on stdin, and suppresses stdout so commands such as `tee` do not overwrite the
-TUI. stderr remains attached when `app/ui` runs the command through `tea.ExecProcess`, and a command
+TUI. `app/ui` runs the command in a background `tea.Cmd`, so the TUI remains visible, and a command
 may write OSC 52 directly through `/dev/tty`. The optional `PostFlushHook` interface is defined on
 the UI consumer side and wired at the composition root only when `--post-flush-command` is set.
 
@@ -571,7 +571,8 @@ User presses 'a' on a diff line without a selection
   → 'Y' (copy_hunk): canonical hunk range → relative path + prefixed source rows → Clipboard.Copy(content)
   → 'O' (flush_output): export the complete snapshot without exiting through one or both configured routes
       → output path: store.WriteFile(path) → atomic overwrite
-      → PostFlushHook.Prepare(snapshot) → tea.ExecProcess → command reads snapshot from stdin
+      → PostFlushHook.Prepare(snapshot) → background tea.Cmd → command reads snapshot from stdin
+      → successful routes remove unchanged annotations from the exported snapshot
   → scoped save captures old/new coordinates and ordered clean +/- excerpt rows
   → on quit: store.FormatOutput() → structured output to stdout/file (file branch uses store.WriteFile)
   → (optional) history.Save() → markdown to ~/.config/revdiff/history/ (best-effort warnings only)

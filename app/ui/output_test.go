@@ -155,6 +155,7 @@ func TestModel_HandleFlushOutput_Success(t *testing.T) {
 				store.Add(a)
 			}
 			path := filepath.Join(t.TempDir(), "out.md")
+			expected := store.FormatOutput()
 			m := testNewModel(t, plainRenderer(), store, noopHighlighter(), ModelConfig{OutputPath: path})
 
 			result, cmd := m.handleFlushOutput()
@@ -164,8 +165,8 @@ func TestModel_HandleFlushOutput_Success(t *testing.T) {
 
 			got, err := os.ReadFile(path) //nolint:gosec // path is a t.TempDir() file
 			require.NoError(t, err)
-			assert.Equal(t, store.FormatOutput(), string(got), "written file must match FormatOutput")
-			assert.Equal(t, len(tc.anns), store.Count(), "flush must not mutate the store")
+			assert.Equal(t, expected, string(got), "written file must match the flushed snapshot")
+			assert.Zero(t, store.Count(), "successful flush must remove exported annotations")
 		})
 	}
 }
@@ -184,59 +185,70 @@ func TestModel_HandleFlushOutput_WriteError(t *testing.T) {
 }
 
 func TestModel_HandleFlushOutput_PostFlushHook(t *testing.T) {
-	store := annotation.NewStore()
-	store.Add(annotation.Annotation{File: "a.go", Line: 1, Type: "+", Comment: "note"})
-	hook := &postFlushHookStub{}
+	tests := []struct {
+		name       string
+		withOutput bool
+		wantHint   string
+	}{
+		{name: "without output file", wantHint: "Running post-flush command with 1 annotation"},
+		{name: "with output file", withOutput: true, wantHint: "Wrote 1 annotation to output file; running post-flush command"},
+	}
 
-	t.Run("without output file", func(t *testing.T) {
-		m := testNewModel(t, plainRenderer(), store, noopHighlighter(), ModelConfig{PostFlushHook: hook})
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			store := annotation.NewStore()
+			store.Add(annotation.Annotation{File: "a.go", Line: 1, Type: "+", Comment: "note"})
+			expected := store.FormatOutput()
+			hook := &postFlushHookStub{}
+			cfg := ModelConfig{PostFlushHook: hook}
+			if tc.withOutput {
+				cfg.OutputPath = filepath.Join(t.TempDir(), "out.md")
+			}
+			m := testNewModel(t, plainRenderer(), store, noopHighlighter(), cfg)
 
-		result, cmd := m.handleFlushOutput()
-		model := result.(Model)
-		require.NotNil(t, cmd)
-		assert.Equal(t, store.FormatOutput(), hook.content)
-		assert.Equal(t, "Running post-flush command with 1 annotation", model.output.hint)
-	})
+			result, cmd := m.handleFlushOutput()
+			model := result.(Model)
+			require.NotNil(t, cmd)
+			assert.Equal(t, expected, hook.content)
+			assert.Equal(t, tc.wantHint, model.output.hint)
+			assert.Equal(t, 1, store.Count(), "annotations remain available while command runs")
 
-	t.Run("with output file", func(t *testing.T) {
-		path := filepath.Join(t.TempDir(), "out.md")
-		m := testNewModel(t, plainRenderer(), store, noopHighlighter(), ModelConfig{
-			OutputPath:    path,
-			PostFlushHook: hook,
-			MouseTracking: true,
+			msg := cmd()
+			finished, followup := model.handlePostFlushFinished(msg.(postFlushFinishedMsg))
+			assert.Nil(t, followup)
+			assert.Zero(t, finished.(Model).store.Count())
+			if tc.withOutput {
+				assert.FileExists(t, cfg.OutputPath)
+			}
 		})
-
-		result, cmd := m.handleFlushOutput()
-		model := result.(Model)
-		require.NotNil(t, cmd)
-		assert.Equal(t, store.FormatOutput(), hook.content)
-		assert.Equal(t, "Wrote 1 annotation to output file; running post-flush command", model.output.hint)
-		assert.FileExists(t, path)
-	})
+	}
 }
 
 func TestModel_HandlePostFlushFinished(t *testing.T) {
 	t.Run("success", func(t *testing.T) {
 		m := testModel([]string{"a.go"}, nil)
 		result, cmd := m.handlePostFlushFinished(postFlushFinishedMsg{
-			successHint:  "Wrote 2 annotations to output file and ran post-flush command",
-			failureHint:  "Wrote 2 annotations to output file; post-flush command failed",
-			restoreMouse: true,
+			successHint: "Wrote 2 annotations to output file and ran post-flush command",
+			failureHint: "Wrote 2 annotations to output file; post-flush command failed",
 		})
 		model := result.(Model)
 		assert.Equal(t, "Wrote 2 annotations to output file and ran post-flush command", model.output.hint)
-		assert.NotNil(t, cmd)
+		assert.Nil(t, cmd)
 	})
 
 	t.Run("failure", func(t *testing.T) {
 		m := testModel([]string{"a.go"}, nil)
+		a := annotation.Annotation{File: "a.go", Line: 1, Type: "+", Comment: "retry me"}
+		m.store.Add(a)
 		result, cmd := m.handlePostFlushFinished(postFlushFinishedMsg{
 			err:         errors.New("exit status 1"),
 			successHint: "Wrote 1 annotation to output file and ran post-flush command",
 			failureHint: "Wrote 1 annotation to output file; post-flush command failed",
+			flushed:     m.store.All(),
 		})
 		model := result.(Model)
 		assert.Equal(t, "Wrote 1 annotation to output file; post-flush command failed", model.output.hint)
+		assert.Equal(t, []annotation.Annotation{a}, model.store.Get("a.go"), "failure must preserve annotations for retry")
 		assert.Nil(t, cmd)
 	})
 }
@@ -273,6 +285,7 @@ func TestModel_ActionFlushOutput_Dispatch(t *testing.T) {
 	model := result.(Model)
 	assert.Equal(t, "Wrote 1 annotation to output file", model.output.hint)
 	assert.FileExists(t, path, "O key must flush annotations to the output file")
+	assert.Zero(t, store.Count(), "O key must clear successfully flushed annotations")
 }
 
 func TestModel_OutputHint_ShownInStatusBar(t *testing.T) {

@@ -569,6 +569,27 @@ func TestStore_Clear(t *testing.T) {
 	assert.Empty(t, s.All(), "All must return empty map after Clear")
 }
 
+func TestStore_RemoveMatching(t *testing.T) {
+	s := NewStore()
+	flushed := Annotation{File: "a.go", Line: 1, Type: "+", Comment: "sent"}
+	unchanged := Annotation{
+		File: "b.go", Line: 2, Type: "-", Comment: "scoped", Scope: ScopeRange,
+		OldStart: 2, OldCount: 1, NewStart: 2, NewCount: 1,
+		Excerpt: []ExcerptLine{{Type: "-", Content: "old"}, {Type: "+", Content: "new"}},
+	}
+	s.Add(flushed)
+	s.Add(unchanged)
+	snapshot := s.All()
+
+	s.Add(Annotation{File: "a.go", Line: 1, Type: "+", Comment: "edited after flush"})
+	s.Add(Annotation{File: "c.go", Line: 3, Type: "+", Comment: "created after flush"})
+	s.RemoveMatching(snapshot)
+
+	assert.Equal(t, []Annotation{{File: "a.go", Line: 1, Type: "+", Comment: "edited after flush"}}, s.Get("a.go"))
+	assert.Empty(t, s.Get("b.go"), "unchanged flushed annotation should be removed")
+	assert.Equal(t, []Annotation{{File: "c.go", Line: 3, Type: "+", Comment: "created after flush"}}, s.Get("c.go"))
+}
+
 func TestStore_WriteFile(t *testing.T) {
 	s := NewStore()
 	s.Add(Annotation{File: "handler.go", Line: 43, Type: "+", Comment: "use errors.Is()"})
