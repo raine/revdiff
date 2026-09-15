@@ -1,0 +1,2 @@
+- Dont update docs, its waste of time
+- DOnt run tests, it's waste of time
