@@ -835,19 +835,19 @@ func TestParseArgs_StagedWithSingleRef(t *testing.T) {
 func TestParseArgs_ColorDefaults(t *testing.T) {
 	opts, err := parseArgs(noConfigArgs(t))
 	require.NoError(t, err)
-	assert.Equal(t, "#D5895F", opts.Colors.Accent)
-	assert.Equal(t, "#585858", opts.Colors.Border)
-	assert.Equal(t, "#d0d0d0", opts.Colors.Normal)
-	assert.Equal(t, "#585858", opts.Colors.Muted)
-	assert.Equal(t, "#87d787", opts.Colors.AddFg)
-	assert.Equal(t, "#123800", opts.Colors.AddBg)
-	assert.Equal(t, "#ff8787", opts.Colors.RemoveFg)
-	assert.Equal(t, "#4D1100", opts.Colors.RemoveBg)
-	assert.Equal(t, "#bbbb44", opts.Colors.CursorFg)
+	assert.Equal(t, "#7A8FA6", opts.Colors.Accent)
+	assert.Equal(t, "#525252", opts.Colors.Border)
+	assert.Equal(t, "#D4D4D4", opts.Colors.Normal)
+	assert.Equal(t, "#737373", opts.Colors.Muted)
+	assert.Equal(t, "#A3C98B", opts.Colors.AddFg)
+	assert.Equal(t, "#1E3328", opts.Colors.AddBg)
+	assert.Equal(t, "#E58A8A", opts.Colors.RemoveFg)
+	assert.Equal(t, "#3A2427", opts.Colors.RemoveBg)
+	assert.Equal(t, "#D6A85F", opts.Colors.CursorFg)
 	assert.Empty(t, opts.Colors.TreeBg, "tree bg should be empty by default")
 	assert.Empty(t, opts.Colors.DiffBg, "diff bg should be empty by default")
-	assert.Equal(t, "#202020", opts.Colors.StatusFg)
-	assert.Equal(t, "#C5794F", opts.Colors.StatusBg)
+	assert.Equal(t, "#CDD6F4", opts.Colors.StatusFg)
+	assert.Equal(t, "#313244", opts.Colors.StatusBg)
 }
 
 func TestParseArgs_ColorFlags(t *testing.T) {
@@ -892,7 +892,7 @@ color-accent = #112233
 	assert.Equal(t, "#112233", opts.Colors.Accent)
 	// unset values keep defaults
 	assert.Equal(t, 2, opts.TreeWidth)
-	assert.Equal(t, "#585858", opts.Colors.Border)
+	assert.Equal(t, "#525252", opts.Colors.Border)
 }
 
 func TestParseArgs_CLIOverridesConfig(t *testing.T) {
@@ -945,7 +945,7 @@ color-remove-fg = #ff0000
 	assert.Equal(t, "#00ff00", opts.Colors.AddFg)
 	assert.Equal(t, "#ff0000", opts.Colors.RemoveFg)
 	// other colors keep defaults
-	assert.Equal(t, "#D5895F", opts.Colors.Accent)
+	assert.Equal(t, "#7A8FA6", opts.Colors.Accent)
 }
 
 func TestResolveFlagPath(t *testing.T) {
@@ -1016,7 +1016,7 @@ func TestDumpConfig(t *testing.T) {
 	assert.Contains(t, output, "post-flush-command =")
 	assert.NotContains(t, output, "commit =", "--commit is CLI-only")
 	assert.Contains(t, output, "[color options]")
-	assert.Contains(t, output, "color-accent = #D5895F")
+	assert.Contains(t, output, "color-accent = #7A8FA6")
 	assert.NotContains(t, output, "\ncolors =", "should not have spurious colors= line")
 }
 

@@ -159,8 +159,8 @@ func TestDumpThemeOutput(t *testing.T) {
 	require.NoError(t, th.Dump(&buf))
 	output := buf.String()
 	assert.Contains(t, output, "chroma-style = catppuccin-macchiato")
-	assert.Contains(t, output, "color-accent = #D5895F")
-	assert.Contains(t, output, "color-add-fg = #87d787")
+	assert.Contains(t, output, "color-accent = #7A8FA6")
+	assert.Contains(t, output, "color-add-fg = #A3C98B")
 
 	// verify dump output can be loaded back (roundtrip via temp file)
 	tmpDir := t.TempDir()
@@ -183,9 +183,9 @@ func TestCollectColors(t *testing.T) {
 	opts, err := parseArgs(noConfigArgs(t))
 	require.NoError(t, err)
 	colors := collectColors(opts)
-	assert.Equal(t, "#D5895F", colors["color-accent"])
-	assert.Equal(t, "#585858", colors["color-border"])
-	assert.Equal(t, "#87d787", colors["color-add-fg"])
+	assert.Equal(t, "#7A8FA6", colors["color-accent"])
+	assert.Equal(t, "#525252", colors["color-border"])
+	assert.Equal(t, "#A3C98B", colors["color-add-fg"])
 	// 5 optional keys (cursor-bg, tree-bg, diff-bg, word-add-bg, word-remove-bg) have no default and are omitted
 	assert.Len(t, colors, 18)
 	assert.Empty(t, colors["color-cursor-bg"])

@@ -508,29 +508,29 @@ All color options accept hex values (`#rrggbb`) and have corresponding `REVDIFF_
 
 | Option | Description | Default |
 |--------|-------------|---------|
-| `--color-accent` | Active pane borders and directory names | `#D5895F` |
-| `--color-border` | Inactive pane borders | `#585858` |
-| `--color-normal` | File entries and context lines | `#d0d0d0` |
-| `--color-muted` | Divider lines and status bar | `#585858` |
-| `--color-selected-fg` | Selected file text | `#ffffaf` |
-| `--color-selected-bg` | Selected file background | `#D5895F` |
-| `--color-annotation` | Annotation text and markers | `#ffd700` |
-| `--color-cursor-fg` | Cursor indicator color | `#bbbb44` |
+| `--color-accent` | Active pane borders and directory names | `#7A8FA6` |
+| `--color-border` | Inactive pane borders | `#525252` |
+| `--color-normal` | File entries and context lines | `#D4D4D4` |
+| `--color-muted` | Divider lines and status bar | `#737373` |
+| `--color-selected-fg` | Selected file text | `#1C1917` |
+| `--color-selected-bg` | Selected file background | `#7A8FA6` |
+| `--color-annotation` | Annotation text and markers | `#E5B567` |
+| `--color-cursor-fg` | Cursor indicator color | `#D6A85F` |
 | `--color-cursor-bg` | Cursor indicator background | terminal default |
-| `--color-add-fg` | Added line text | `#87d787` |
-| `--color-add-bg` | Added line background | `#123800` |
-| `--color-remove-fg` | Removed line text | `#ff8787` |
-| `--color-remove-bg` | Removed line background | `#4D1100` |
+| `--color-add-fg` | Added line text | `#A3C98B` |
+| `--color-add-bg` | Added line background | `#1E3328` |
+| `--color-remove-fg` | Removed line text | `#E58A8A` |
+| `--color-remove-bg` | Removed line background | `#3A2427` |
 | `--color-word-add-bg` | Intra-line word-diff add background | auto-derived from add-bg |
 | `--color-word-remove-bg` | Intra-line word-diff remove background | auto-derived from remove-bg |
-| `--color-modify-fg` | Modified line text (collapsed mode) | `#f5c542` |
-| `--color-modify-bg` | Modified line background (collapsed mode) | `#3D2E00` |
+| `--color-modify-fg` | Modified line text (collapsed mode) | `#DDBA72` |
+| `--color-modify-bg` | Modified line background (collapsed mode) | `#382F20` |
 | `--color-tree-bg` | File tree pane background | terminal default |
 | `--color-diff-bg` | Diff pane background | terminal default |
-| `--color-status-fg` | Status bar foreground | `#202020` |
-| `--color-status-bg` | Status bar background | `#C5794F` |
-| `--color-search-fg` | Search match text | `#1a1a1a` |
-| `--color-search-bg` | Search match background | `#4a4a00` |
+| `--color-status-fg` | Status bar foreground | `#CDD6F4` |
+| `--color-status-bg` | Status bar background | `#313244` |
+| `--color-search-fg` | Search match text | `#1C1917` |
+| `--color-search-bg` | Search match background | `#C9A85F` |
 
 </details>
 
