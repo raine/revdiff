@@ -60,8 +60,8 @@ type intralineToken struct {
 	end   int    // byte offset past the last byte
 }
 
-// tokenPattern splits a line into word tokens (letters/digits/underscore), whitespace runs, and punctuation runs.
-var tokenPattern = regexp.MustCompile(`[\pL\pN_]+|\s+|[^\pL\pN_\s]+`)
+// tokenPattern splits a line into word tokens (letters/digits/underscore), whitespace runs, and individual punctuation characters.
+var tokenPattern = regexp.MustCompile(`[\pL\pN_]+|\s+|[^\pL\pN_\s]`)
 
 // ComputeIntraRanges computes changed byte-offset ranges for a pair of minus/plus lines.
 // returns ranges for the minus line and plus line respectively.
@@ -129,7 +129,7 @@ func (d *Differ) PairLines(lines []LinePair) []Pair {
 }
 
 // tokenizeLineWithOffsets splits a line into tokens with byte offsets.
-// each token is a word (letters/digits/underscore), whitespace run, or punctuation run.
+// each token is a word (letters/digits/underscore), whitespace run, or individual punctuation character.
 func (d *Differ) tokenizeLineWithOffsets(line string) []intralineToken {
 	locs := tokenPattern.FindAllStringIndex(line, -1)
 	tokens := make([]intralineToken, len(locs))

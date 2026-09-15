@@ -147,7 +147,7 @@ func (o options) startupUntracked() bool {
 // config file is loaded first, then CLI args override.
 // precedence: CLI flags > env vars > config file > built-in defaults.
 func parseArgs(args []string) (options, error) {
-	var opts options
+	opts := options{WordDiff: true}
 	p := flags.NewParser(&opts, flags.Default)
 	p.Usage = "[OPTIONS] [base] [against]"
 
@@ -238,7 +238,7 @@ func validateCommitOption(opts options) error {
 
 // dumpConfig writes the current config with defaults to the given writer.
 func dumpConfig(args []string, w io.Writer) {
-	var opts options
+	opts := options{WordDiff: true}
 	p := flags.NewParser(&opts, flags.Default)
 	iniParser := flags.NewIniParser(p)
 	configPath := resolveFlagPath(args, "config", "REVDIFF_CONFIG", defaultConfigPath)

@@ -509,10 +509,28 @@ func TestOptions_StartupUntracked(t *testing.T) {
 }
 
 func TestParseArgs_WordDiff(t *testing.T) {
-	t.Run("default off", func(t *testing.T) {
+	t.Run("default on", func(t *testing.T) {
+		opts, err := parseArgs(noConfigArgs(t))
+		require.NoError(t, err)
+		assert.True(t, opts.WordDiff)
+	})
+
+	t.Run("env opt out", func(t *testing.T) {
+		t.Setenv("REVDIFF_WORD_DIFF", "false")
 		opts, err := parseArgs(noConfigArgs(t))
 		require.NoError(t, err)
 		assert.False(t, opts.WordDiff)
+	})
+
+	t.Run("config opt out", func(t *testing.T) {
+		cfgPath := filepath.Join(t.TempDir(), "config")
+		require.NoError(t, os.WriteFile(cfgPath, []byte("[Application Options]\nword-diff = false\n"), 0o600))
+		opts, err := parseArgs([]string{"--config", cfgPath})
+		require.NoError(t, err)
+		assert.False(t, opts.WordDiff)
+		opts, err = parseArgs([]string{"--config", cfgPath, "--word-diff"})
+		require.NoError(t, err)
+		assert.True(t, opts.WordDiff)
 	})
 
 	t.Run("flag", func(t *testing.T) {

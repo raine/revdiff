@@ -65,7 +65,8 @@ func TestTokenizeLineWithOffsets(t *testing.T) {
 			{text: "   ", start: 0, end: 3},
 		}},
 		{name: "only punctuation", line: "++--", expect: []intralineToken{
-			{text: "++--", start: 0, end: 4},
+			{text: "+", start: 0, end: 1}, {text: "+", start: 1, end: 2},
+			{text: "-", start: 2, end: 3}, {text: "-", start: 3, end: 4},
 		}},
 		{name: "underscore in word", line: "my_var", expect: []intralineToken{
 			{text: "my_var", start: 0, end: 6},
@@ -629,4 +630,17 @@ func TestPairLines_BestMatchScoring(t *testing.T) {
 	// alpha() should pair with alpha(ctx), not completely_different()
 	assert.Equal(t, 0, pairs[0].RemoveIdx)
 	assert.Equal(t, 2, pairs[0].AddIdx)
+}
+
+func TestComputeIntraRanges_QuotedReplacement(t *testing.T) {
+	prefix := "expect(app.outputs).toEqual(["
+	minus := prefix + "VISIBLE_SUCCESS_FALLBACK]);"
+	plus := prefix + "'Synthetic published answer.']);"
+	removed, added := New().ComputeIntraRanges(minus, plus)
+	assert.Equal(t, []Range{{Start: len(prefix), End: len(prefix) + len("VISIBLE_SUCCESS_FALLBACK")}}, removed)
+	assert.Equal(t, []Range{
+		{Start: len(prefix), End: len(prefix) + len("'Synthetic")},
+		{Start: len(prefix) + len("'Synthetic "), End: len(prefix) + len("'Synthetic published")},
+		{Start: len(prefix) + len("'Synthetic published "), End: len(prefix) + len("'Synthetic published answer.'")},
+	}, added)
 }
