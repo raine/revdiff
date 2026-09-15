@@ -140,5 +140,5 @@ When the user wants to review comments already present in the current conversati
 - Inside a review the user can press `y` to copy the complete current annotation snapshot to the terminal clipboard without quitting or changing annotations.
 - `Space` starts a contiguous range selection, `a` or `Enter` annotates it, `Esc` cancels it, `c` annotates the whole canonical hunk, and `m` marks the file reviewed.
 - The user can press `Y` on an added or removed line to copy the complete underlying diff hunk as a relative path followed by plain `+` and `-` lines.
-- The user can press `O` to flush annotations to the output file mid-session, but the pi flow does not need it: pi is suspended until revdiff exits and returns the captured annotations on quit. The keep-open flush loop matters only for standalone use outside pi.
+- The user can press `O` to export annotations through `--output`, `--post-flush-command`, or both without exiting. The pi flow does not need it: pi is suspended until revdiff exits and returns the captured annotations on quit. The keep-open flush loop matters only for standalone use outside pi.
 - You can still use revdiff standalone outside pi; the extension is only a convenience layer around the existing binary.

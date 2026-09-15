@@ -163,7 +163,7 @@ Press `Y` on an added or removed line to copy the complete contiguous add/remove
 | `}` / `{` | Jump to next/previous annotation (always crosses file boundaries; silent no-op at the first/last annotation) |
 | `d` | Delete annotation under cursor |
 | `y` | Copy all current annotations to the terminal clipboard |
-| `O` | Flush annotations to the `--output` file without exiting (requires `-o`) |
+| `O` | Export annotations without exiting (requires `--output` and/or `--post-flush-command`) |
 | `Ctrl+E` (during annotation input) | Open `$EDITOR` for multi-line annotation (`open_editor` — rebindable) |
 | `Esc` | Cancel range selection or annotation input |
 
@@ -175,7 +175,7 @@ Press `e` in the diff pane to open the focused file in `$EDITOR` (`open_file_in_
 
 Press `y` to copy every current annotation to the terminal clipboard (`copy_annotations`, rebindable). The copied text is the same complete structured snapshot emitted on graceful quit, including annotations across all files. Copying keeps revdiff open and leaves the annotation store unchanged. revdiff sends the snapshot with OSC 52 through local terminals and SSH. GNU screen receives a passthrough sequence, and tmux handles the request through `set-clipboard`. Snapshots larger than 100,000 bytes fail with a status hint, and OSC 52 does not acknowledge terminal acceptance.
 
-Press `O` to write the current annotations to the `--output` file without exiting (`flush_output`, rebindable). This file-based handoff supports an annotate, flush, external edit, and `R` reload loop in one review. Each flush overwrites the file with the full current annotation set (a snapshot, not an append log), using the same atomic write as a normal quit. `O` requires `-o`/`--output`; with no output file, or with no annotations yet, it shows a status hint and writes nothing. A configured `--post-flush-command` runs after each successful file flush for automated external handoffs.
+Press `O` to export the current annotations without exiting (`flush_output`, rebindable). Configure `--output`, `--post-flush-command`, or both. Each flush sends the complete annotation snapshot: the output file is overwritten atomically, and the command receives the same snapshot on stdin. With neither configured, or with no annotations yet, revdiff shows a status hint and does nothing.
 
 Press `m` to mark the focused file reviewed. Press `F` to toggle the sidebar between all files and unreviewed files; while filtered, marking a file reviewed removes it from the list and advances to the next unfinished file. On `R` reload, revdiff keeps the mark only when the file's effective text diff is unchanged; rebases that only shift line numbers or surrounding context keep it, while changed or removed files lose it. Binary files and opaque placeholders are conservatively unmarked on reload because their rendered diff does not expose enough content to prove they are unchanged.
 

@@ -569,8 +569,9 @@ User presses 'a' on a diff line without a selection
   → 'd' deletes the visible annotation row, or a whole-hunk annotation from any change row in its canonical hunk
   → 'y' (copy_annotations): store.FormatOutput() → Clipboard.Copy(snapshot), revdiff stays open and store remains unchanged
   → 'Y' (copy_hunk): canonical hunk range → relative path + prefixed source rows → Clipboard.Copy(content)
-  → 'O' (flush_output, requires --output): store.WriteFile(path) → atomic write, revdiff stays open (annotate → flush → hand to agent → 'R' reload loop)
-      → optional PostFlushHook.Prepare(snapshot) → tea.ExecProcess → command reads snapshot from stdin
+  → 'O' (flush_output): export the complete snapshot without exiting through one or both configured routes
+      → output path: store.WriteFile(path) → atomic overwrite
+      → PostFlushHook.Prepare(snapshot) → tea.ExecProcess → command reads snapshot from stdin
   → scoped save captures old/new coordinates and ordered clean +/- excerpt rows
   → on quit: store.FormatOutput() → structured output to stdout/file (file branch uses store.WriteFile)
   → (optional) history.Save() → markdown to ~/.config/revdiff/history/ (best-effort warnings only)

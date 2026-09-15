@@ -416,7 +416,7 @@ Use `revdiff --commit` to review exactly the changes introduced by `HEAD`, indep
 | `-X`, `--exclude` | Exclude files matching prefix, may be repeated, env: `REVDIFF_EXCLUDE` (comma-separated) | |
 | `-F`, `--only` | Show only matching files by exact path or suffix, may be repeated (e.g. `--only=model.go`) | |
 | `-o`, `--output` | Write annotations to file instead of stdout, env: `REVDIFF_OUTPUT` | |
-| `--post-flush-command` | Run command after a successful `O` flush (requires `-o`/`--output`), env: `REVDIFF_POST_FLUSH_COMMAND`, config: `post-flush-command` | |
+| `--post-flush-command` | Run command after a successful `O` flush, env: `REVDIFF_POST_FLUSH_COMMAND`, config: `post-flush-command` | |
 | `--annotations` | Preload annotations from a markdown file in `-o` format | |
 | `--history-dir` | Directory for review history auto-saves, env: `REVDIFF_HISTORY_DIR` | `~/.config/revdiff/history/` |
 | `--config` | Path to config file, env: `REVDIFF_CONFIG` | `~/.config/revdiff/config` |
@@ -793,7 +793,7 @@ Clipboard delivery uses OSC 52 on the controlling terminal, including SSH sessio
 | `}` / `{` | Jump to next/previous annotation (always crosses file boundaries; silent no-op at the first/last annotation) |
 | `d` | Delete annotation under cursor |
 | `y` | Copy all current annotations to the terminal clipboard |
-| `O` | Flush annotations to the `--output` file without exiting (requires `-o`) |
+| `O` | Export annotations without exiting (requires `--output` and/or `--post-flush-command`) |
 | `Ctrl+E` (during annotation input) | Open `$EDITOR` for multi-line annotation (`open_editor` — rebindable) |
 | `Esc` | Cancel range selection or annotation input |
 
@@ -805,9 +805,9 @@ Press `e` in the diff pane to open the focused file in `$EDITOR` (`open_file_in_
 
 Press `y` to copy every current annotation to the terminal clipboard (`copy_annotations`, rebindable). The copied text is the same complete structured snapshot emitted on graceful quit, including annotations across all files. Copying keeps revdiff open and leaves the annotation store unchanged. revdiff sends the snapshot with OSC 52, which works through local terminals and SSH when the terminal permits clipboard access. GNU screen receives a passthrough sequence, and tmux handles the OSC 52 request through its `set-clipboard` setting. Snapshots larger than 100,000 bytes fail with a status hint rather than sending a sequence. OSC 52 does not acknowledge whether the terminal accepted the clipboard update.
 
-Press `O` to write the current annotations to the `--output` file without exiting (`flush_output`, rebindable). This file-based handoff supports an annotate, flush, external edit, and `R` reload loop in one review. Each flush overwrites the file with the full current annotation set (a snapshot, not an append log), using the same atomic write as a normal quit. `O` requires `-o`/`--output`; with no output file, or with no annotations yet, it shows a status hint and writes nothing.
+Press `O` to export the current annotations without exiting (`flush_output`, rebindable). Configure `--output`, `--post-flush-command`, or both. Each flush sends the complete annotation snapshot: the output file is overwritten atomically, and the command receives the same snapshot on stdin. With neither configured, or with no annotations yet, revdiff shows a status hint and does nothing.
 
-A post-flush command can automate an additional handoff after every successful file flush. For example, create an `osc-copy` shell script on your `PATH` that reads stdin and writes the clipboard sequence to `/dev/tty`:
+A post-flush command can send the snapshot directly without requiring an output file. For example, create an `osc-copy` shell script on your `PATH` that reads stdin and writes the clipboard sequence to `/dev/tty`:
 
 ```sh
 #!/bin/sh
@@ -815,7 +815,7 @@ data=$(base64 | tr -d '\n')
 printf '\033]52;c;%s\007' "$data" > /dev/tty
 ```
 
-After making the script executable, run revdiff with `--post-flush-command=osc-copy` or set `post-flush-command = osc-copy` in the config file. This workflow couples clipboard delivery or another custom command to each explicit `O` file flush.
+After making the script executable, run revdiff with `--post-flush-command=osc-copy` or set `post-flush-command = osc-copy` in the config file. No output file is required; add `--output` only when the same flush should also write a snapshot file.
 
 The post-flush command runs synchronously. Use a fast, non-interactive command because revdiff waits for it to finish before restoring the TUI.
 
