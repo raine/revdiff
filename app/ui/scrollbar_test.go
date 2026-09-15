@@ -254,16 +254,10 @@ func TestApplyScrollbar_SafeWhenLinesShorterThanExpected(t *testing.T) {
 	assert.NotContains(t, out, scrollbarThumbRune, "no thumb when shape is below expected minimum")
 }
 
-// G3: lock in the bold SGR contract so a future edit that drops the
-// \x1b[1m...\x1b[22m wrap in scrollbarThumbRune is caught explicitly. the
-// project's CLAUDE.md gotcha entry treats the bold envelope as load-bearing
-// (it brightens the accent color to make the thumb pop without resetting
-// the border background) — this assertion makes that promise testable.
-func TestApplyScrollbar_ThumbWrappedInBoldSGR(t *testing.T) {
-	assert.True(t, strings.HasPrefix(scrollbarThumbRune, "\x1b[1m"), "thumb must start with bold SGR")
-	assert.True(t, strings.HasSuffix(scrollbarThumbRune, "\x1b[22m"), "thumb must end with intensity-only reset")
-	assert.Contains(t, scrollbarThumbRune, "┃", "thumb glyph must be heavy-vertical")
-	assert.NotContains(t, scrollbarThumbRune, "\x1b[0m", "thumb must not use full reset (would kill BorderBackground)")
+// G3: lock in the half-cell block contract so terminals render the thumb
+// thicker than the border track without filling the entire cell.
+func TestApplyScrollbar_ThumbUsesHalfCellBlock(t *testing.T) {
+	assert.Equal(t, "▐", scrollbarThumbRune)
 }
 
 // G4: cover the idx<0 branch — a viewport row that does not contain the

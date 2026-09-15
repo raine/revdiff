@@ -145,7 +145,7 @@ across files by concern to keep files under ~500 lines:
 - **`diffview.go`** — diff line rendering, gutters, line styling, search highlights
 - **`diffnav.go`** — cursor movement, hunk navigation, viewport sync, horizontal scroll
 - **`scrollbar.go`** — vertical scrollbar thumb post-processing on rendered diff/tree/TOC panes
-  (replaces right-border `│` with `┃` on rows mapped to the visible viewport portion)
+  (replaces right-border `│` with `▐` on rows mapped to the visible viewport portion)
 - **`collapsed.go`** — collapsed diff mode: hide removes, show modified markers
 - **`annotate.go`** — annotation input lifecycle (start, save, cancel, delete) and the visual-row
   chokepoint: `annotationVisualRows` is the single source of truth for "how many rows + what content

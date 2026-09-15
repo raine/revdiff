@@ -13,7 +13,7 @@ Built for a specific use case: reviewing code changes, plans, and documents with
 - Word wrap mode: wraps long lines at viewport boundary with `↪` continuation markers, toggle with `w`; optional `--wrap-indent N` for hanging-indent continuations (handy for markdown lists)
 - Page scroll overlap: `--page-overlap N` carries the bottom N lines of the screen to the top of the next one on PgUp/PgDn, so the seam between screens keeps context; the carryover is approximate on wrapped or annotated lines, which occupy several rows but are a single cursor stop
 - Horizontal scroll overflow indicators: truncated diff lines show `«` / `»` markers at the edges to signal hidden content off-screen
-- Vertical scrollbar thumb: a thicker `┃` segment on pane right borders indicates the visible portion of long diffs, file trees, and markdown TOCs; thumb size and position track scroll progress automatically
+- Vertical scrollbar thumb: a thicker `▐` segment on pane right borders indicates the visible portion of long diffs, file trees, and markdown TOCs; thumb size and position track scroll progress automatically
 - Line numbers: side-by-side old/new line number gutter for diffs, single column for full-context files, toggle with `L`
 - Rename-aware diffs (git): a renamed file shows its origin in the diff-pane header as `old → new` and renders only the real line changes instead of a full delete-and-add
 - Mercurial support: auto-detects hg repos, translates git-style refs (HEAD, HEAD~N) to Mercurial revsets

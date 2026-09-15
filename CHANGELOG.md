@@ -2,6 +2,7 @@
 
 ## Unreleased
 
+- make scrollbar thumbs easier to see with a half-cell block
 - annotate contiguous ranges and whole hunks with scoped old/new coordinates and clean diff excerpts
 
 ## v1.12.0 - 2026-08-04

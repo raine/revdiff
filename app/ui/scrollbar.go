@@ -7,21 +7,13 @@ import (
 )
 
 // scrollbar glyphs. track stays the lipgloss right-border default (│),
-// thumb replaces it on rows mapped to the visible viewport portion. the
-// thumb is heavy-vertical (U+2503): same line geometry and centering as
-// the track, just visually thicker — block-style alternatives like ▐ paint
-// only one half of the cell and visually misalign with the frame. bold SGR
-// is wrapped around the rune to brighten the accent color on the thumb;
-// \x1b[22m resets only intensity so the surrounding border bg/fg envelope
-// is preserved (vs \x1b[0m which would kill BorderBackground). bold is
-// emitted unconditionally including in --no-colors mode: it is an SGR
-// attribute, not a color, and most terminals render it as a weight change
-// even without color support, which keeps the indicator visible in plain
-// mode. this is an intentional deviation from the reverse-video pattern
-// other helpers (scrollIndicatorANSI, search highlight) use for no-colors.
+// while the thumb replaces it with a half-cell block on rows mapped to the
+// visible viewport portion. both glyphs occupy one terminal cell, so the
+// wider thumb does not change pane geometry. the surrounding border style
+// supplies the thumb color and background.
 const (
 	scrollbarTrackRune = "│"
-	scrollbarThumbRune = "\x1b[1m┃\x1b[22m"
+	scrollbarThumbRune = "▐"
 
 	// the rendered navigation pane has 1 top border row before content rows begin.
 	// if the tree/TOC pane gets a header or any other pre-content row, this offset
@@ -47,7 +39,7 @@ type scrollbarSpec struct {
 }
 
 // applyScrollbar replaces the right-border rune of diff viewport rows with a
-// thicker thumb glyph (heavy-vertical, bold) to indicate scroll position.
+// half-cell thumb glyph to indicate scroll position.
 // see applyPaneScrollbar for no-op cases, layout-shape invariants, and ANSI
 // envelope handling.
 func (m Model) applyScrollbar(rendered string) string {
@@ -74,13 +66,13 @@ func (m Model) applyNavigationScrollbar(rendered string, state sidepane.ScrollSt
 }
 
 // applyPaneScrollbar replaces the right-border rune of scrollable pane rows with
-// a thicker thumb glyph (heavy-vertical, bold) to indicate scroll position. no-op
+// a half-cell thumb glyph to indicate scroll position. no-op
 // when the content fits the viewport (nothing to scroll) or the viewport has zero
 // height. preserves the ANSI envelope around the replaced rune: lipgloss renders
 // the right border as the line's last │ rune, so strings.LastIndex finds the rune
-// position and the slice operation swaps only that rune — the prefix/suffix bytes
-// (border fg/bg ANSI) stay intact regardless of the thumb's added SGR wrap. glyphs
-// ┃ and │ are both 1 cell wide so display geometry is unchanged.
+// position and the slice operation swaps only that rune. the prefix/suffix bytes
+// (border fg/bg ANSI) stay intact. glyphs ▐ and │ are both 1 cell wide, so display
+// geometry is unchanged.
 //
 // also no-ops when the rendered pane's line count differs from the expected shape
 // (top/pre-content rows + viewport rows + bottom border). this is a safety net for
