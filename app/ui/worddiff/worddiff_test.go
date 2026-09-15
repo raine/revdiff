@@ -25,7 +25,7 @@ func changedRangesHelper(d *Differ, minusLine, plusLine string) ([]Range, []Rang
 	if len(minusToks)*len(plusToks) > maxDiffCells {
 		return nil, nil
 	}
-	keepMinus, keepPlus := d.lcsKeptTokens(minusToks, plusToks)
+	keepMinus, keepPlus := d.alignedKeptTokens(minusToks, plusToks)
 	return d.buildChangedRanges(minusToks, keepMinus), d.buildChangedRanges(plusToks, keepPlus)
 }
 
@@ -89,7 +89,7 @@ func TestTokenizeLineWithOffsets(t *testing.T) {
 	}
 }
 
-func TestLCSKeptTokens(t *testing.T) {
+func TestAlignedKeptTokens(t *testing.T) {
 	d := New()
 	tok := func(texts ...string) []intralineToken {
 		result := make([]intralineToken, 0, len(texts))
@@ -142,7 +142,7 @@ func TestLCSKeptTokens(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			gotMinus, gotPlus := d.lcsKeptTokens(tc.minus, tc.plus)
+			gotMinus, gotPlus := d.alignedKeptTokens(tc.minus, tc.plus)
 			assert.Equal(t, tc.keepMinus, gotMinus, "keepMinus")
 			assert.Equal(t, tc.keepPlus, gotPlus, "keepPlus")
 		})
@@ -426,7 +426,7 @@ func TestPassesSimilarityGateFromKeep(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			minusToks := d.tokenizeLineWithOffsets(tc.minus)
 			plusToks := d.tokenizeLineWithOffsets(tc.plus)
-			keepMinus, _ := d.lcsKeptTokens(minusToks, plusToks)
+			keepMinus, _ := d.alignedKeptTokens(minusToks, plusToks)
 			got := d.passesSimilarityGateFromKeep(minusToks, plusToks, keepMinus)
 			assert.Equal(t, tc.want, got)
 		})
@@ -439,7 +439,7 @@ func TestPassesSimilarityGateFromKeep_WhitespaceOnly(t *testing.T) {
 	minusToks := d.tokenizeLineWithOffsets("   ")
 	plusToks := d.tokenizeLineWithOffsets("   ")
 	require.NotEmpty(t, minusToks, "whitespace should tokenize")
-	keepMinus, _ := d.lcsKeptTokens(minusToks, plusToks)
+	keepMinus, _ := d.alignedKeptTokens(minusToks, plusToks)
 	assert.False(t, d.passesSimilarityGateFromKeep(minusToks, plusToks, keepMinus))
 }
 
@@ -498,48 +498,6 @@ func TestComputeIntraRanges(t *testing.T) {
 			} else {
 				assert.Equal(t, tc.wantPlus, gotPlus, "plus ranges")
 			}
-		})
-	}
-}
-
-func TestCommonPrefixLen(t *testing.T) {
-	d := New()
-	tests := []struct {
-		name string
-		a, b string
-		want int
-	}{
-		{name: "identical", a: "hello", b: "hello", want: 5},
-		{name: "common prefix", a: "hello world", b: "hello earth", want: 6},
-		{name: "no common", a: "abc", b: "xyz", want: 0},
-		{name: "empty a", a: "", b: "xyz", want: 0},
-		{name: "empty b", a: "xyz", b: "", want: 0},
-		{name: "both empty", a: "", b: "", want: 0},
-	}
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			assert.Equal(t, tc.want, d.commonPrefixLen(tc.a, tc.b))
-		})
-	}
-}
-
-func TestCommonSuffixLen(t *testing.T) {
-	d := New()
-	tests := []struct {
-		name string
-		a, b string
-		want int
-	}{
-		{name: "identical", a: "hello", b: "hello", want: 5},
-		{name: "common suffix", a: "old world", b: "new world", want: 6},
-		{name: "no common", a: "abc", b: "xyz", want: 0},
-		{name: "empty a", a: "", b: "xyz", want: 0},
-		{name: "empty b", a: "xyz", b: "", want: 0},
-		{name: "both empty", a: "", b: "", want: 0},
-	}
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			assert.Equal(t, tc.want, d.commonSuffixLen(tc.a, tc.b))
 		})
 	}
 }
@@ -643,4 +601,42 @@ func TestComputeIntraRanges_QuotedReplacement(t *testing.T) {
 		{Start: len(prefix) + len("'Synthetic "), End: len(prefix) + len("'Synthetic published")},
 		{Start: len(prefix) + len("'Synthetic published "), End: len(prefix) + len("'Synthetic published answer.'")},
 	}, added)
+}
+
+func TestPairLines_SplitPunctuation(t *testing.T) {
+	original := `{text: "++--", start: 0, end: 4},`
+	first := `{text: "+", start: 0, end: 1}, {text: "+", start: 1, end: 2},`
+	second := `{text: "-", start: 2, end: 3}, {text: "-", start: 3, end: 4},`
+	removed, added := New().ComputeIntraRanges(original, first)
+	assert.Equal(t, []Range{
+		{Start: strings.Index(original, "++--") + 1, End: strings.Index(original, "++--") + 4},
+		{Start: strings.Index(original, "4"), End: strings.Index(original, "4") + 1},
+	}, removed)
+	zero := strings.Index(first, "0")
+	for _, r := range added {
+		assert.False(t, r.Start <= zero && zero < r.End, "unchanged start offset must not be highlighted")
+	}
+	for _, indent := range []string{"", "\t\t\t", "            "} {
+		t.Run(indent, func(t *testing.T) {
+			assert.Equal(t, []Pair{{RemoveIdx: 0, AddIdx: 1}}, New().PairLines([]LinePair{
+				{Content: indent + original, IsRemove: true},
+				{Content: indent + first},
+				{Content: indent + second},
+			}))
+			assert.Equal(t, []Pair{{RemoveIdx: 0, AddIdx: 2}}, New().PairLines([]LinePair{
+				{Content: indent + first, IsRemove: true},
+				{Content: indent + second, IsRemove: true},
+				{Content: indent + original},
+			}))
+		})
+	}
+}
+
+func TestPairSimilarity(t *testing.T) {
+	d := New()
+	a := d.tokenizeLineWithOffsets("foo")
+	assert.Equal(t, 1.0, d.pairSimilarity(a, a))
+	assert.Equal(t, 0.5, d.pairSimilarity(a, d.tokenizeLineWithOffsets("foo+foo")))
+	assert.Zero(t, d.pairSimilarity(nil, a))
+	assert.Zero(t, d.pairSimilarity(a, d.tokenizeLineWithOffsets("bar")))
 }

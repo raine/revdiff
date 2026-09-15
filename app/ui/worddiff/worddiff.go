@@ -1,5 +1,5 @@
 // Package worddiff provides intra-line word-diff algorithms and a shared text-range
-// highlight insertion engine. It owns tokenization, LCS computation, byte-offset range
+// highlight insertion engine. It owns tokenization, edit-distance alignment, byte-offset range
 // building, similarity gating, and line pairing for add/remove diff blocks.
 //
 // The public API is exposed as methods on the stateless Differ type, enabling consumer-side
@@ -41,8 +41,8 @@ type Pair struct {
 // tokenizer; maxDiffCells is the actual cost guard.
 const maxLineLenForDiff = 20000
 
-// maxDiffCells caps the LCS table at this many cells (minus tokens * plus tokens).
-// the table dominates cost at 8 bytes per cell, so the budget is ~32MB and ~17ms per pair. it bounds
+// maxDiffCells caps the edit-distance table at this many cells (minus tokens * plus tokens).
+// the table dominates cost at 12 bytes per cell, so the budget is ~48MB per pair. it bounds
 // one pair and nothing wider: recomputeIntraRanges calls ComputeIntraRanges once per paired
 // remove/add line, so a file whose diff holds many long pairs pays this for each of them.
 // byte length is a poor proxy for the cost: 500 repeated letters tokenize to one token,
@@ -66,7 +66,7 @@ var tokenPattern = regexp.MustCompile(`[\pL\pN_]+|\s+|[^\pL\pN_\s]`)
 // ComputeIntraRanges computes changed byte-offset ranges for a pair of minus/plus lines.
 // returns ranges for the minus line and plus line respectively.
 // returns nil ranges if either line is empty, exceeds maxLineLenForDiff, would need more than
-// maxDiffCells LCS cells, or fails the similarity gate (< 30% common non-whitespace tokens).
+// maxDiffCells edit-distance cells, or fails the similarity gate (< 30% common non-whitespace tokens).
 func (d *Differ) ComputeIntraRanges(minusLine, plusLine string) ([]Range, []Range) {
 	if minusLine == "" || plusLine == "" {
 		return nil, nil
@@ -84,7 +84,7 @@ func (d *Differ) ComputeIntraRanges(minusLine, plusLine string) ([]Range, []Rang
 		return nil, nil
 	}
 
-	keepMinus, keepPlus := d.lcsKeptTokens(minusToks, plusToks)
+	keepMinus, keepPlus := d.alignedKeptTokens(minusToks, plusToks)
 	minusRanges := d.buildChangedRanges(minusToks, keepMinus)
 	plusRanges := d.buildChangedRanges(plusToks, keepPlus)
 	if len(minusRanges) == 0 && len(plusRanges) == 0 {
@@ -139,47 +139,87 @@ func (d *Differ) tokenizeLineWithOffsets(line string) []intralineToken {
 	return tokens
 }
 
-// lcsKeptTokens computes which tokens from minus and plus lines are kept (unchanged) via LCS.
+// alignedKeptTokens computes which tokens from minus and plus lines are kept (unchanged) via edit-distance alignment.
 // returns two boolean slices parallel to the input token slices: true = kept, false = changed.
-func (d *Differ) lcsKeptTokens(minusToks, plusToks []intralineToken) ([]bool, []bool) {
+func (d *Differ) alignedKeptTokens(minusToks, plusToks []intralineToken) ([]bool, []bool) {
 	m, n := len(minusToks), len(plusToks)
 	if m == 0 || n == 0 {
 		return make([]bool, m), make([]bool, n)
 	}
 
-	// build LCS DP table
-	dp := make([][]int, m+1)
+	// Opening a gap costs more than extending it. This keeps an inserted
+	// expression together instead of matching delimiters scattered through it.
+	const gapOpen int32 = 1
+	const gapExtend int32 = 1
+	const substitution int32 = 4
+	const (
+		aligned = iota
+		removed
+		added
+	)
+	dp := make([][][3]int32, m+1)
 	for i := range dp {
-		dp[i] = make([]int, n+1)
+		dp[i] = make([][3]int32, n+1)
 	}
-	for i := 1; i <= m; i++ {
-		for j := 1; j <= n; j++ {
-			switch {
-			case minusToks[i-1].text == plusToks[j-1].text:
-				dp[i][j] = dp[i-1][j-1] + 1
-			case dp[i-1][j] >= dp[i][j-1]:
-				dp[i][j] = dp[i-1][j]
-			default:
-				dp[i][j] = dp[i][j-1]
+	for i := m; i >= 0; i-- {
+		for j := n; j >= 0; j-- {
+			if i == m && j == n {
+				continue
+			}
+			for state := range 3 {
+				best := int32(1 << 30)
+				if i < m && j < n {
+					cost := substitution
+					if minusToks[i].text == plusToks[j].text {
+						cost = 0
+					}
+					best = cost + dp[i+1][j+1][aligned]
+				}
+				if i < m {
+					cost := gapExtend
+					if state != removed {
+						cost += gapOpen
+					}
+					best = min(best, cost+dp[i+1][j][removed])
+				}
+				if j < n {
+					cost := gapExtend
+					if state != added {
+						cost += gapOpen
+					}
+					best = min(best, cost+dp[i][j+1][added])
+				}
+				dp[i][j][state] = best
 			}
 		}
 	}
 
-	// backtrace to mark kept tokens
 	keepMinus := make([]bool, m)
 	keepPlus := make([]bool, n)
-	i, j := m, n
-	for i > 0 && j > 0 {
-		switch {
-		case minusToks[i-1].text == plusToks[j-1].text:
-			keepMinus[i-1] = true
-			keepPlus[j-1] = true
-			i--
-			j--
-		case dp[i-1][j] >= dp[i][j-1]:
-			i--
-		default:
-			j--
+	i, j, state := 0, 0, aligned
+	for i < m && j < n {
+		cost := substitution
+		equal := minusToks[i].text == plusToks[j].text
+		if equal {
+			cost = 0
+		}
+		if dp[i][j][state] == cost+dp[i+1][j+1][aligned] {
+			keepMinus[i], keepPlus[j] = equal, equal
+			i++
+			j++
+			state = aligned
+			continue
+		}
+		cost = gapExtend
+		if state != removed {
+			cost += gapOpen
+		}
+		if dp[i][j][state] == cost+dp[i+1][j][removed] {
+			i++
+			state = removed
+		} else {
+			j++
+			state = added
 		}
 	}
 	return keepMinus, keepPlus
@@ -225,7 +265,7 @@ func (d *Differ) buildChangedRanges(tokens []intralineToken, keep []bool) []Rang
 }
 
 // passesSimilarityGateFromKeep returns true if the pair has at least 30% common non-whitespace tokens.
-// uses pre-computed tokens and keep flags from lcsKeptTokens to avoid redundant tokenization/LCS.
+// uses pre-computed tokens and keep flags from alignedKeptTokens to avoid redundant tokenization/alignment.
 // whitespace tokens are excluded from the calculation to avoid inflating similarity.
 func (d *Differ) passesSimilarityGateFromKeep(minusToks, plusToks []intralineToken, keepMinus []bool) bool {
 	equalNonWS := 0
@@ -256,7 +296,8 @@ func (d *Differ) countNonWhitespace(tokens []intralineToken) int {
 	return n
 }
 
-// greedyPair pairs lines greedily using prefix+suffix scoring.
+// greedyPair pairs lines greedily using normalized non-whitespace token overlap.
+// Equal scores favor the earliest line. Scoring is linear in candidate token count.
 // iterates the shorter side and picks the best unused match from the longer side.
 func (d *Differ) greedyPair(lines []LinePair, removes, adds []int) []Pair {
 	shorter, longer := removes, adds
@@ -266,20 +307,29 @@ func (d *Differ) greedyPair(lines []LinePair, removes, adds []int) []Pair {
 		shorterIsRemove = false
 	}
 
+	tokens := make([][]intralineToken, len(lines))
+	for i, line := range lines {
+		if len(line.Content) > maxLineLenForDiff {
+			continue
+		}
+		for _, tok := range d.tokenizeLineWithOffsets(line.Content) {
+			if !d.isWhitespaceToken(tok) {
+				tokens[i] = append(tokens[i], tok)
+			}
+		}
+	}
 	used := make([]bool, len(longer))
 	pairs := make([]Pair, 0, len(shorter))
 
 	for _, si := range shorter {
-		bestScore := -1
+		bestScore := -1.0
 		bestIdx := -1
-		sContent := lines[si].Content
 
 		for li, li2 := range longer {
 			if used[li] {
 				continue
 			}
-			lContent := lines[li2].Content
-			score := 2*d.commonPrefixLen(sContent, lContent) + 2*d.commonSuffixLen(sContent, lContent)
+			score := d.pairSimilarity(tokens[si], tokens[li2])
 			if score > bestScore {
 				bestScore = score
 				bestIdx = li
@@ -298,25 +348,23 @@ func (d *Differ) greedyPair(lines []LinePair, removes, adds []int) []Pair {
 	return pairs
 }
 
-// commonPrefixLen returns the number of common prefix bytes between two strings.
-func (d *Differ) commonPrefixLen(a, b string) int {
-	n := min(len(a), len(b))
-	for i := range n {
-		if a[i] != b[i] {
-			return i
+// pairSimilarity compares token frequencies across the whole line, excluding whitespace.
+// Repeated tokens count only up to their frequency in the other line, so duplicated
+// expressions do not inflate the amount of shared content.
+func (d *Differ) pairSimilarity(a, b []intralineToken) float64 {
+	if len(a) == 0 || len(b) == 0 {
+		return 0
+	}
+	counts := make(map[string]int, len(a))
+	for _, tok := range a {
+		counts[tok.text]++
+	}
+	common := 0
+	for _, tok := range b {
+		if counts[tok.text] > 0 {
+			common++
+			counts[tok.text]--
 		}
 	}
-	return n
-}
-
-// commonSuffixLen returns the number of common suffix bytes between two strings.
-func (d *Differ) commonSuffixLen(a, b string) int {
-	la, lb := len(a), len(b)
-	n := min(la, lb)
-	for i := range n {
-		if a[la-1-i] != b[lb-1-i] {
-			return i
-		}
-	}
-	return n
+	return 2 * float64(common) / float64(len(a)+len(b))
 }
