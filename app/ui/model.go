@@ -1147,7 +1147,7 @@ func (m Model) dispatchAction(action keymap.Action) (tea.Model, tea.Cmd) {
 		keymap.ActionToggleLineNums, keymap.ActionToggleBlame, keymap.ActionToggleWordDiff, keymap.ActionToggleUntracked:
 		return m.handleViewToggle(action)
 	case keymap.ActionNextHunk, keymap.ActionPrevHunk:
-		if m.annot.selection.active {
+		if m.annot.selection.selecting {
 			m.output.hint = "Selection stays within the current hunk"
 			return m, nil
 		}

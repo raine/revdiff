@@ -72,6 +72,36 @@ func TestModelKeyboardRangeSelectionAndSave(t *testing.T) {
 	assert.True(t, strings.HasSuffix(m.store.FormatOutput(), "\n"))
 }
 
+func TestModelSpaceFinishesRangeSelectionWithoutClearingRows(t *testing.T) {
+	m := newSelectionModel(t)
+	result, _ := m.dispatchAction(keymap.ActionSelectRange)
+	m = result.(Model)
+	result, _ = m.dispatchAction(keymap.ActionDown)
+	m = result.(Model)
+	result, _ = m.dispatchAction(keymap.ActionDown)
+	m = result.(Model)
+	require.True(t, m.annot.selection.selecting)
+
+	result, _ = m.dispatchAction(keymap.ActionSelectRange)
+	m = result.(Model)
+	assert.True(t, m.annot.selection.active)
+	assert.False(t, m.annot.selection.selecting)
+	assert.Equal(t, 1, m.annot.selection.anchor)
+	assert.Equal(t, 3, m.annot.selection.end)
+
+	result, _ = m.dispatchAction(keymap.ActionDown)
+	m = result.(Model)
+	assert.Equal(t, 4, m.nav.diffCursor)
+	assert.Equal(t, 1, m.annot.selection.anchor)
+	assert.Equal(t, 3, m.annot.selection.end)
+
+	result, _ = m.dispatchAction(keymap.ActionSelectRange)
+	m = result.(Model)
+	assert.True(t, m.annot.selection.selecting)
+	assert.Equal(t, 4, m.annot.selection.anchor)
+	assert.Equal(t, 4, m.annot.selection.end)
+}
+
 func TestModelRangeAnnotationInputFollowsBottomSelection(t *testing.T) {
 	tests := []struct {
 		name   string

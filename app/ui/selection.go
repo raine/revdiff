@@ -12,6 +12,7 @@ import (
 
 type rangeSelection struct {
 	active     bool
+	selecting  bool
 	anchor     int
 	end        int
 	dragging   bool
@@ -67,7 +68,7 @@ func (m *Model) beginSelection(idx int) bool {
 	m.ensureSelectionHunkExpanded(idx)
 	m.annot.cursorOnAnnotation = false
 	m.nav.diffCursor = idx
-	m.annot.selection = rangeSelection{active: true, anchor: idx, end: idx}
+	m.annot.selection = rangeSelection{active: true, selecting: true, anchor: idx, end: idx}
 	m.invalidateRenderCaches()
 	m.layout.viewport.SetContent(m.renderDiff())
 	return true
@@ -112,6 +113,10 @@ func (m *Model) ensureSelectionHunkExpanded(idx int) {
 
 func (m Model) handleSelectRange() (tea.Model, tea.Cmd) {
 	if m.layout.focus != paneDiff {
+		return m, nil
+	}
+	if m.annot.selection.active && m.annot.selection.selecting {
+		m.annot.selection.selecting = false
 		return m, nil
 	}
 	m.beginSelection(m.nav.diffCursor)
@@ -221,7 +226,7 @@ func (m Model) zeroCountStart(start int, oldSide bool) int {
 }
 
 func (m *Model) extendSelectionForAction(action keymap.Action) bool {
-	if !m.annot.selection.active {
+	if !m.annot.selection.active || !m.annot.selection.selecting {
 		return false
 	}
 	r, ok := m.hunkRangeAt(m.annot.selection.anchor)
