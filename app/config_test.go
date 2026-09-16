@@ -765,6 +765,46 @@ func TestParseArgs_NoRef(t *testing.T) {
 	assert.Empty(t, opts.ref())
 }
 
+func TestParseArgs_PRBase(t *testing.T) {
+	opts, err := parseArgs(append(noConfigArgs(t), "--base"))
+	require.NoError(t, err)
+	assert.True(t, opts.PRBase)
+	assert.Empty(t, opts.ref(), "pull request range is resolved after VCS detection")
+}
+
+func TestParseArgs_PRBaseConflicts(t *testing.T) {
+	tests := []struct {
+		name string
+		args []string
+		want string
+	}{
+		{name: "single ref", args: []string{"--base", "main"}, want: "--base cannot be used with refs"},
+		{name: "two refs", args: []string{"--base", "main", "feature"}, want: "--base cannot be used with refs"},
+		{name: "commit", args: []string{"--base", "--commit"}, want: "--base cannot be used with --commit"},
+		{name: "staged", args: []string{"--base", "--staged"}, want: "--base cannot be used with --staged"},
+		{name: "untracked", args: []string{"--base", "--untracked"}, want: "--base cannot be used with --untracked"},
+		{name: "all files", args: []string{"--base", "--all-files"}, want: "--base cannot be used with --all-files"},
+		{name: "stdin", args: []string{"--base", "--stdin"}, want: "--base cannot be used with --stdin"},
+		{name: "compare", args: []string{"--base", "--compare-old=a", "--compare-new=b"}, want: "--base cannot be used with --compare-old/--compare-new"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := parseArgs(append(noConfigArgs(t), tt.args...))
+			require.EqualError(t, err, tt.want)
+		})
+	}
+}
+
+func TestPRBaseHelp(t *testing.T) {
+	var opts options
+	parser := flags.NewParser(&opts, flags.Default)
+	var buf bytes.Buffer
+	parser.WriteHelp(&buf)
+	assert.Contains(t, buf.String(), "--base")
+	assert.Contains(t, buf.String(), "pull request base")
+	assert.Contains(t, buf.String(), "ignores index and working tree changes")
+}
+
 func TestParseArgs_Commit(t *testing.T) {
 	tests := []struct {
 		name string

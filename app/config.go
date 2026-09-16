@@ -34,6 +34,7 @@ type options struct {
 
 	Staged bool         `long:"staged" ini-name:"staged" env:"REVDIFF_STAGED" description:"show staged changes"`
 	Commit commitOption `long:"commit" short:"c" no-ini:"true" optional:"true" optional-value:"HEAD" value-name:"[REVISION]" description:"show changes introduced by one commit"`
+	PRBase bool         `long:"base" no-ini:"true" description:"review the current branch against its pull request base (git and gh only; ignores index and working tree changes)"`
 
 	Untracked             bool     `long:"untracked" ini-name:"untracked" env:"REVDIFF_UNTRACKED" description:"show untracked files in the tree"`
 	TreeWidth             int      `long:"tree-width" ini-name:"tree-width" env:"REVDIFF_TREE_WIDTH" default:"2" description:"file tree panel width in units (1-10, default 2 of 10)"`
@@ -165,6 +166,9 @@ func parseArgs(args []string) (options, error) {
 	if err := validateCommitOption(opts); err != nil {
 		return options{}, err
 	}
+	if err := validatePRBaseOption(opts); err != nil {
+		return options{}, err
+	}
 
 	if opts.Staged && (opts.Refs.Against != "" || strings.Contains(opts.Refs.Base, "..")) {
 		return options{}, errors.New("--staged cannot be used with two-ref diff")
@@ -211,6 +215,30 @@ func parseArgs(args []string) (options, error) {
 	opts.compareAbsNew = absNew
 
 	return opts, nil
+}
+
+func validatePRBaseOption(opts options) error {
+	if !opts.PRBase {
+		return nil
+	}
+	conflicts := []struct {
+		bad  bool
+		mode string
+	}{
+		{opts.Refs.Base != "" || opts.Refs.Against != "", "refs"},
+		{opts.Commit.set, "--commit"},
+		{opts.Staged, "--staged"},
+		{opts.Untracked, "--untracked"},
+		{opts.AllFiles, "--all-files"},
+		{opts.Stdin, "--stdin"},
+		{opts.CompareOld != "" || opts.CompareNew != "", "--compare-old/--compare-new"},
+	}
+	for _, conflict := range conflicts {
+		if conflict.bad {
+			return fmt.Errorf("--base cannot be used with %s", conflict.mode)
+		}
+	}
+	return nil
 }
 
 func validateCommitOption(opts options) error {

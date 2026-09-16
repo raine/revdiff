@@ -33,10 +33,14 @@ func setupVCSRenderer(opts options) (vcsSetup, error) {
 	}
 	vcsType, vcsRoot := diff.DetectVCS(cwd)
 
+	if opts.PRBase && vcsType != diff.VCSGit {
+		return vcsSetup{}, errors.New("--base requires a git repository")
+	}
+
 	switch vcsType {
 	case diff.VCSGit:
 		g := diff.NewGit(vcsRoot)
-		ref, err := resolveCommitRef(opts, g)
+		ref, err := resolveGitRef(opts, g, vcsRoot)
 		if err != nil {
 			return vcsSetup{}, err
 		}
@@ -83,6 +87,13 @@ func setupVCSRenderer(opts options) (vcsSetup, error) {
 		}
 		return vcsSetup{renderer: r, workDir: workDir}, nil
 	}
+}
+
+func resolveGitRef(opts options, resolver commitRangeResolver, repoRoot string) (string, error) {
+	if opts.PRBase {
+		return resolvePRBaseRef(repoRoot)
+	}
+	return resolveCommitRef(opts, resolver)
 }
 
 func resolveCommitRef(opts options, resolver commitRangeResolver) (string, error) {
