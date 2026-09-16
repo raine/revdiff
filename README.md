@@ -1,5 +1,17 @@
 # <img src="site/assets/logo.png" alt="" width="28">&nbsp;revdiff &nbsp;<a href="https://github.com/umputun/revdiff/actions/workflows/ci.yml"><img src="https://github.com/umputun/revdiff/actions/workflows/ci.yml/badge.svg" alt="build"></a> <a href="https://coveralls.io/github/umputun/revdiff?branch=master"><img src="https://coveralls.io/repos/github/umputun/revdiff/badge.svg?branch=master" alt="Coverage Status"></a> <a href="https://goreportcard.com/report/github.com/umputun/revdiff"><img src="https://goreportcard.com/badge/github.com/umputun/revdiff" alt="Go Report Card"></a>
 
+## What this fork adds
+
+This fork of [umputun/revdiff](https://github.com/umputun/revdiff) adds:
+
+- **Word diff on by default**, with brighter highlights and improved punctuation and split-line alignment. Toggle with `W`.
+- **Pull request base detection**: `revdiff --base` uses `gh` to find the current branch's PR target, including stacked PRs. Reviews committed changes only.
+- **Live annotation handoff**: `O` can send annotations to `--post-flush-command` without an output file or leaving the TUI. Successful exports clear the sent annotations; failed exports keep them for retry.
+- **Range selection that stays selected**: press Space again to finish selecting and resume navigation without losing the range.
+- **Visual tweaks**: a revised default color palette and a thicker scrollbar thumb.
+
+## Overview
+
 TUI for reviewing diffs, files, and documents with inline annotations. Outputs structured annotations to stdout on quit, making it easy to pipe results into AI agents, scripts, or other tools.
 
 Built for a specific use case: reviewing code changes, plans, and documents without leaving a terminal-based AI coding session (e.g., Claude Code). Just enough UI to navigate diffs and files, annotate specific lines, and return the results to the calling process - no more, no less.
@@ -8,7 +20,7 @@ Built for a specific use case: reviewing code changes, plans, and documents with
 
 - Structured annotation output to stdout - pipe into AI agents, scripts, or other tools
 - Full-file diff view with syntax highlighting
-- Intra-line word-diff: highlights the specific changed words within paired add/remove lines using a brighter background overlay, off by default — enable with `--word-diff` or toggle with `W`
+- Intra-line word-diff: highlights the specific changed words within paired add/remove lines using a brighter background overlay, on by default. Toggle with `W`
 - Collapsed diff mode: shows final text with change markers, toggle with `v`
 - Word wrap mode: wraps long lines at viewport boundary with `↪` continuation markers, toggle with `w`; optional `--wrap-indent N` for hanging-indent continuations (handy for markdown lists)
 - Page scroll overlap: `--page-overlap N` carries the bottom N lines of the screen to the top of the next one on PgUp/PgDn, so the seam between screens keeps context; the carryover is approximate on wrapped or annotated lines, which occupy several rows but are a single cursor stop
