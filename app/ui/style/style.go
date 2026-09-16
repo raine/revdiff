@@ -47,16 +47,13 @@ func (c Colors) normalize() Colors {
 	c.RemoveFg = normalizeColor(c.RemoveFg)
 	c.RemoveBg = normalizeColor(c.RemoveBg)
 	// auto-derive word-diff backgrounds from add/remove bg when not explicitly set.
-	// the shift amount is intentionally small (0.08 in HSL lightness, not 0.15): the
-	// default palette uses very dark add/remove bgs (L~0.11-0.15), so a larger shift
-	// would roughly double the lightness and crush contrast against syntax-highlighted
-	// text on top. 0.08 keeps the changed-range span visibly distinct without making
-	// the bg read as a different color entirely.
+	// the shift stays modest because the default line backgrounds are dark and a
+	// large increase would reduce contrast with syntax-highlighted text.
 	if c.WordAddBg == "" && c.AddBg != "" {
-		c.WordAddBg = shiftLightness(c.AddBg, 0.08)
+		c.WordAddBg = shiftLightness(c.AddBg, 0.10)
 	}
 	if c.WordRemoveBg == "" && c.RemoveBg != "" {
-		c.WordRemoveBg = shiftLightness(c.RemoveBg, 0.08)
+		c.WordRemoveBg = shiftLightness(c.RemoveBg, 0.10)
 	}
 	c.WordAddBg = normalizeColor(c.WordAddBg)
 	c.WordRemoveBg = normalizeColor(c.WordRemoveBg)
