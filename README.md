@@ -375,7 +375,7 @@ Positional arguments support several forms:
 - `revdiff main..feature` - same as above, using git's dot-dot syntax
 - `revdiff main...feature` - changes since `feature` diverged from `main`
 
-Use `revdiff --commit` to review exactly the changes introduced by `HEAD`, independent of staged, unstaged, and untracked work. Use `revdiff --commit=REVISION` for another commit. A merge commit is compared with its first parent. A root commit is compared with the empty tree in Git, Mercurial's null revision, or Jujutsu's synthetic root commit. `--commit` works in Git, Mercurial, and Jujutsu repositories and cannot be combined with positional refs, `--staged`, `--all-files`, `--only`, `--stdin`, or `--compare-old`/`--compare-new`.
+Use `revdiff --commit` to review exactly the changes introduced by `HEAD`, independent of staged, unstaged, and untracked work. For another commit, pass the revision separately with `revdiff -c REVISION` or attach it with `revdiff --commit=REVISION`. A merge commit is compared with its first parent. A root commit is compared with the empty tree in Git, Mercurial's null revision, or Jujutsu's synthetic root commit. `--commit` works in Git, Mercurial, and Jujutsu repositories and cannot be combined with positional refs, `--staged`, `--all-files`, `--only`, `--stdin`, or `--compare-old`/`--compare-new`.
 
 ### Options
 
@@ -384,7 +384,7 @@ Use `revdiff --commit` to review exactly the changes introduced by `HEAD`, indep
 | `base` | Git ref to diff against | uncommitted changes |
 | `against` | Second git ref for two-ref diff | |
 | `--staged` | Show staged changes, env: `REVDIFF_STAGED` | `false` |
-| `-c`, `--commit[=REVISION]` | Show changes introduced by one commit | `HEAD` |
+| `-c`, `--commit [REVISION]` | Show changes introduced by one commit | `HEAD` |
 | `--untracked` | Show untracked files in the tree, env: `REVDIFF_UNTRACKED` | `false` |
 | `--tree-width` | File tree panel width in units (1-10), env: `REVDIFF_TREE_WIDTH` | `2` |
 | `--tab-width` | Number of spaces per tab character, env: `REVDIFF_TAB_WIDTH` | `4` |
@@ -573,7 +573,7 @@ revdiff --staged
 revdiff --commit
 
 # review another commit
-revdiff --commit=v1.2.3
+revdiff -c v1.2.3
 
 # diff between two refs
 revdiff main feature
