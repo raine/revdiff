@@ -6,6 +6,7 @@ This fork of [umputun/revdiff](https://github.com/umputun/revdiff) adds:
 
 - **Word diff on by default**, with brighter highlights and improved punctuation and split-line alignment. Toggle with `W`.
 - **Pull request base detection**: `revdiff --base` uses `gh` to find the current branch's PR target, including stacked PRs. Reviews committed changes only.
+- **Single-commit review**: `revdiff -c [REVISION]` shows only the changes introduced by one commit, isolated from working-tree changes. It defaults to `HEAD`.
 - **Live annotation handoff**: `O` can send annotations to `--post-flush-command` without an output file or leaving the TUI. Successful exports clear the sent annotations; failed exports keep them for retry.
 - **Range selection that stays selected**: press Space again to finish selecting and resume navigation without losing the range.
 - **Visual tweaks**: a revised default color palette and a thicker scrollbar thumb.
