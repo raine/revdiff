@@ -808,17 +808,19 @@ func TestPRBaseHelp(t *testing.T) {
 func TestParseArgs_Commit(t *testing.T) {
 	tests := []struct {
 		name string
-		arg  string
+		args []string
 		want string
 	}{
-		{name: "HEAD default", arg: "--commit", want: "HEAD"},
-		{name: "selected revision", arg: "--commit=release", want: "release"},
-		{name: "short HEAD default", arg: "-c", want: "HEAD"},
-		{name: "short selected revision", arg: "-c=release", want: "release"},
+		{name: "HEAD default", args: []string{"--commit"}, want: "HEAD"},
+		{name: "selected revision", args: []string{"--commit=release"}, want: "release"},
+		{name: "selected revision separated", args: []string{"--commit", "release"}, want: "release"},
+		{name: "short HEAD default", args: []string{"-c"}, want: "HEAD"},
+		{name: "short selected revision", args: []string{"-c=release"}, want: "release"},
+		{name: "short selected revision separated", args: []string{"-c", "release"}, want: "release"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			opts, err := parseArgs(append(noConfigArgs(t), tt.arg))
+			opts, err := parseArgs(append(noConfigArgs(t), tt.args...))
 			require.NoError(t, err)
 			assert.True(t, opts.Commit.set)
 			assert.Equal(t, tt.want, opts.Commit.target)
@@ -833,8 +835,8 @@ func TestParseArgs_CommitConflicts(t *testing.T) {
 		args []string
 		want string
 	}{
-		{name: "single ref", args: []string{"--commit", "HEAD"}, want: "--commit cannot be used with refs"},
-		{name: "two refs", args: []string{"--commit", "main", "feature"}, want: "--commit cannot be used with refs"},
+		{name: "single ref", args: []string{"--commit=HEAD", "main"}, want: "--commit cannot be used with refs"},
+		{name: "two refs", args: []string{"--commit=HEAD", "main", "feature"}, want: "--commit cannot be used with refs"},
 		{name: "staged", args: []string{"--commit", "--staged"}, want: "--commit cannot be used with --staged"},
 		{name: "all files", args: []string{"--commit", "--all-files"}, want: "--commit cannot be used with --all-files"},
 		{name: "only", args: []string{"--commit", "--only=file.go"}, want: "--commit cannot be used with --only"},

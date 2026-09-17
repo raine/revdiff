@@ -148,6 +148,7 @@ func (o options) startupUntracked() bool {
 // config file is loaded first, then CLI args override.
 // precedence: CLI flags > env vars > config file > built-in defaults.
 func parseArgs(args []string) (options, error) {
+	args = normalizeCommitArgs(args)
 	opts := options{WordDiff: true}
 	p := flags.NewParser(&opts, flags.Default)
 	p.Usage = "[OPTIONS] [base] [against]"
@@ -215,6 +216,20 @@ func parseArgs(args []string) (options, error) {
 	opts.compareAbsNew = absNew
 
 	return opts, nil
+}
+
+func normalizeCommitArgs(args []string) []string {
+	normalized := make([]string, 0, len(args))
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+		if (arg == "-c" || arg == "--commit") && i+1 < len(args) && !strings.HasPrefix(args[i+1], "-") {
+			normalized = append(normalized, arg+"="+args[i+1])
+			i++
+			continue
+		}
+		normalized = append(normalized, arg)
+	}
+	return normalized
 }
 
 func validatePRBaseOption(opts options) error {
